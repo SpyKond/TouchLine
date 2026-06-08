@@ -49,7 +49,7 @@
             window.AppData.activeUserEmail = null;
             localStorage.removeItem('football_tracker_pro_v4_active_email');
             sessionStorage.removeItem('nav_history');
-            window.location.href = 'login.html';
+            window.location.href = 'index.html';
         },
         
         updateProfileWidget() {
