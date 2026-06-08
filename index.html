@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Football Stats - Вход</title>
+    <link rel="stylesheet" href="design.css">
+    <script src="data.js"></script>
+    <script src="navigation.js"></script>
+</head>
+<body>
+    <div id="auth-screen">
+        <div class="auth-window">
+            <!-- Экран приветствия -->
+            <div id="as-welcome" class="auth-subscreen active">
+                <div class="auth-icon">⚽</div>
+                <h2 class="auth-title">Football Stats Pro</h2>
+                <p class="auth-desc">Отслеживай свою карьеру, вступай в клубы и соревнуйся с друзьями</p>
+                <button class="auth-btn auth-btn-primary" onclick="switchAuthSubscreen('as-login')">Войти в аккаунт</button>
+                <div class="auth-divider"><span>или</span></div>
+                <button class="auth-btn auth-btn-outline" onclick="switchAuthSubscreen('as-register')">Создать новый аккаунт</button>
+            </div>
+            
+            <!-- Регистрация -->
+            <div id="as-register" class="auth-subscreen">
+                <h2 class="auth-title">Регистрация</h2>
+                <p class="auth-desc">Создайте профиль и начните отслеживать свою статистику</p>
+                <div id="error-register" class="auth-error"></div>
+                <input type="email" class="auth-input" id="reg-email" placeholder="Электронная почта">
+                <input type="text" class="auth-input" id="reg-name" placeholder="Игровой никнейм">
+                <input type="text" class="auth-input" id="reg-hashtag" placeholder="Хэштег (#1234)">
+                <select class="auth-input" id="reg-nat">
+                    <option value="🇰🇿">🇰🇿 Казахстан</option>
+                    <option value="🇷🇺">🇷🇺 Россия</option>
+                    <option value="🇩🇪">🇩🇪 Германия</option>
+                    <option value="🇪🇸">🇪🇸 Испания</option>
+                    <option value="🇬🇧">🇬🇧 Англия</option>
+                    <option value="🇫🇷">🇫🇷 Франция</option>
+                </select>
+                <input type="password" class="auth-input" id="reg-pass" placeholder="Придумайте пароль">
+                <input type="password" class="auth-input" id="reg-pass-confirm" placeholder="Повторите пароль">
+                <button class="auth-btn auth-btn-success" onclick="handleRegisterSubmit()">Далее</button>
+                <a class="auth-link" onclick="switchAuthSubscreen('as-welcome')">Назад</a>
+            </div>
+            
+            <!-- Подтверждение кода -->
+            <div id="as-code" class="auth-subscreen">
+                <h2 class="auth-title">Подтверждение</h2>
+                <p class="auth-desc" id="code-screen-desc">Код отправлен на почту. (Для теста: <b id="test-code-display"></b>)</p>
+                <div id="error-code" class="auth-error"></div>
+                <input type="text" class="auth-input" id="auth-digit-code" placeholder="0 0 0 0 0 0" maxlength="6" style="text-align:center; font-size:28px; letter-spacing:8px; font-weight:700;">
+                <button class="auth-btn auth-btn-primary" onclick="handleCodeVerify()">Подтвердить код</button>
+                <a class="auth-link" onclick="cancelCodeFlow()">Отмена</a>
+            </div>
+            
+            <!-- Вход -->
+            <div id="as-login" class="auth-subscreen">
+                <h2 class="auth-title">Вход в аккаунт</h2>
+                <p class="auth-desc">Введите свои данные для входа в профиль</p>
+                <div id="error-login" class="auth-error"></div>
+                <input type="email" class="auth-input" id="login-email" placeholder="Электронная почта">
+                <input type="password" class="auth-input" id="login-pass" placeholder="Пароль">
+                <button class="auth-btn auth-btn-primary" onclick="handleLoginSubmit()">Войти</button>
+                <a class="auth-link" style="font-size:13px; color:var(--text-light);" onclick="handleForgotPasswordClick()">Забыли пароль?</a>
+                <br>
+                <a class="auth-link" onclick="switchAuthSubscreen('as-welcome')">Назад</a>
+            </div>
+            
+            <!-- Восстановление пароля - выбор -->
+            <div id="as-recovery-choice" class="auth-subscreen">
+                <h2 class="auth-title">Личность подтверждена</h2>
+                <p class="auth-desc">Хотите изменить пароль или сразу войти?</p>
+                <button class="auth-btn auth-btn-primary" onclick="switchAuthSubscreen('as-change-password')">Поменять пароль</button>
+                <button class="auth-btn auth-btn-outline" style="margin-top:10px;" onclick="loginUserDirectly()">Продолжить вход</button>
+            </div>
+            
+            <!-- Смена пароля -->
+            <div id="as-change-password" class="auth-subscreen">
+                <h2 class="auth-title">Новый пароль</h2>
+                <p class="auth-desc">Придумайте и подтвердите новый пароль</p>
+                <div id="error-change-pass" class="auth-error"></div>
+                <input type="password" class="auth-input" id="new-password-val" placeholder="Новый пароль (мин. 8 символов)">
+                <input type="password" class="auth-input" id="new-password-confirm" placeholder="Повторите новый пароль">
+                <button class="auth-btn auth-btn-success" onclick="handleChangePasswordSubmit()">Сохранить и войти</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let authFlowContext = { action: "", email: "", tempRegData: {}, generatedCode: "" };
+        
+        function switchAuthSubscreen(id) {
+            document.querySelectorAll('.auth-subscreen').forEach(s => s.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            document.querySelectorAll('.auth-error').forEach(e => e.style.display = 'none');
+        }
+        
+        function showAuthError(el, msg) {
+            document.getElementById(el).innerText = msg;
+            document.getElementById(el).style.display = 'block';
+        }
+        
+        function handleRegisterSubmit() {
+            const email = document.getElementById('reg-email').value.trim().toLowerCase();
+            const name = document.getElementById('reg-name').value.trim();
+            const hashtag = document.getElementById('reg-hashtag').value.trim();
+            const nat = document.getElementById('reg-nat').value;
+            const pass = document.getElementById('reg-pass').value;
+            const pass2 = document.getElementById('reg-pass-confirm').value;
+            
+            if (!email) { showAuthError('error-register', 'Введите адрес электронной почты'); return; }
+            if (!email.includes('@')) { showAuthError('error-register', 'Некорректный формат почты'); return; }
+            if (!name) { showAuthError('error-register', 'Введите игровой никнейм'); return; }
+            if (!hashtag) { showAuthError('error-register', 'Введите ваш хэштег'); return; }
+            if (!hashtag.startsWith('#') || hashtag.length < 2) { showAuthError('error-register', 'Хэштег должен начинаться с #'); return; }
+            if (!pass) { showAuthError('error-register', 'Придумайте пароль'); return; }
+            if (pass.length < 8) { showAuthError('error-register', 'Пароль должен содержать минимум 8 символов'); return; }
+            if (!/[A-ZА-Я]/.test(pass)) { showAuthError('error-register', 'Пароль должен содержать заглавную букву'); return; }
+            if (!/\d/.test(pass)) { showAuthError('error-register', 'Пароль должен содержать цифру'); return; }
+            if (pass !== pass2) { showAuthError('error-register', 'Пароли не совпадают'); return; }
+            if (window.AppData.usersDatabase[email]) { showAuthError('error-register', 'Аккаунт уже зарегистрирован'); return; }
+            
+            const code = Math.floor(100000 + Math.random() * 900000).toString();
+            authFlowContext = {
+                action: "register",
+                email,
+                generatedCode: code,
+                tempRegData: {
+                    password: pass,
+                    profile: {
+                        name,
+                        hashtag,
+                        photo: "",
+                        nationality: nat,
+                        position: "НАП",
+                        exp: 0,
+                        created: new Date().toISOString().split('T')[0]
+                    },
+                    clubs: []
+                }
+            };
+            
+            document.getElementById('test-code-display').innerText = code;
+            switchAuthSubscreen('as-code');
+        }
+        
+        function handleCodeVerify() {
+            const inputCode = document.getElementById('auth-digit-code').value.trim();
+            if (!inputCode) { showAuthError('error-code', 'Введите код'); return; }
+            if (inputCode !== authFlowContext.generatedCode) { showAuthError('error-code', 'Неверный код'); return; }
+            
+            if (authFlowContext.action === "register") {
+                window.AppData.usersDatabase[authFlowContext.email] = {
+                    password: authFlowContext.tempRegData.password,
+                    profile: authFlowContext.tempRegData.profile,
+                    clubs: authFlowContext.tempRegData.clubs
+                };
+                window.AppData.activeUserEmail = authFlowContext.email;
+                window.AppData.saveAll();
+                window.location.href = 'clubs.html';
+            } else if (authFlowContext.action === "recover") {
+                switchAuthSubscreen('as-recovery-choice');
+            }
+            
+            document.getElementById('auth-digit-code').value = '';
+        }
+        
+        function cancelCodeFlow() {
+            document.getElementById('auth-digit-code').value = '';
+            switchAuthSubscreen('as-welcome');
+        }
+        
+        function handleLoginSubmit() {
+            const email = document.getElementById('login-email').value.trim().toLowerCase();
+            const pass = document.getElementById('login-pass').value;
+            
+            if (!email) { showAuthError('error-login', 'Введите почту'); return; }
+            if (!pass) { showAuthError('error-login', 'Введите пароль'); return; }
+            if (!window.AppData.usersDatabase[email]) { showAuthError('error-login', 'Аккаунт не найден'); return; }
+            if (window.AppData.usersDatabase[email].password !== pass) { showAuthError('error-login', 'Неверный пароль'); return; }
+            
+            window.AppData.activeUserEmail = email;
+            localStorage.setItem('football_tracker_pro_v4_active_email', email);
+            window.location.href = 'clubs.html';
+        }
+        
+        function handleForgotPasswordClick() {
+            const email = document.getElementById('login-email').value.trim().toLowerCase();
+            if (!email) { showAuthError('error-login', 'Введите почту выше'); return; }
+            if (!window.AppData.usersDatabase[email]) { showAuthError('error-login', 'Аккаунт не найден'); return; }
+            
+            const code = Math.floor(100000 + Math.random() * 900000).toString();
+            authFlowContext = { action: "recover", email, generatedCode: code, tempRegData: {} };
+            document.getElementById('test-code-display').innerText = code;
+            switchAuthSubscreen('as-code');
+        }
+        
+        function loginUserDirectly() {
+            window.AppData.activeUserEmail = authFlowContext.email;
+            localStorage.setItem('football_tracker_pro_v4_active_email', authFlowContext.email);
+            window.location.href = 'clubs.html';
+        }
+        
+        function handleChangePasswordSubmit() {
+            const p1 = document.getElementById('new-password-val').value;
+            const p2 = document.getElementById('new-password-confirm').value;
+            
+            if (!p1) { showAuthError('error-change-pass', 'Введите пароль'); return; }
+            if (p1.length < 8) { showAuthError('error-change-pass', 'Минимум 8 символов'); return; }
+            if (p1 !== p2) { showAuthError('error-change-pass', 'Пароли не совпадают'); return; }
+            
+            window.AppData.usersDatabase[authFlowContext.email].password = p1;
+            window.AppData.saveAll();
+            loginUserDirectly();
+        }
+    </script>
+</body>
+</html>
