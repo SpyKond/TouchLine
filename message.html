@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Football Stats - Сообщения</title>
+    <link rel="stylesheet" href="design.css">
+    <script src="data.js"></script>
+    <script src="navigation.js"></script>
+</head>
+<body>
+    <div id="profile-widget">
+        <div class="profile-btn" id="top-profile-btn" onclick="Navigation.navigateTo('profile.html')">
+            <div class="avatar-mini" id="widget-avatar">👤</div>
+            <span id="widget-name">Игрок</span>
+        </div>
+        <div class="msg-btn" onclick="Navigation.navigateTo('message.html')">
+            <span style="font-size:16px;">✉</span>
+            <div class="msg-badge" id="msg-badge" style="display:none;">0</div>
+        </div>
+    </div>
+
+    <div id="contacts-page" class="page active">
+        <div class="window" style="max-width:500px; padding:20px;">
+            <button class="back-btn" onclick="Navigation.goBack()">←</button>
+            <h2 style="text-align:center; margin-bottom:16px; font-weight:700;">Сообщения</h2>
+            <div id="contacts-list" style="max-height:65vh; overflow-y:auto;"></div>
+        </div>
+    </div>
+
+    <div id="chat-page" class="page" style="display:none;">
+        <div class="window" style="max-width:500px; padding:16px;">
+            <button class="back-btn" onclick="closeChatAndGoBack()">←</button>
+            <div id="chat-header-bar" class="chat-header-bar" style="display:none;"></div>
+            <div id="chat-header" style="font-weight:700; margin-bottom:12px; text-align:center;"></div>
+            <div class="chat-container">
+                <div class="chat-messages" id="chat-messages"></div>
+                <div class="chat-input-area" id="chat-input-area">
+                    <input type="file" id="chat-file-input" accept="image/*" style="display:none;" onchange="sendPhoto()">
+                    <button class="btn" style="padding:8px 12px; background:#f1f5f9;" onclick="document.getElementById('chat-file-input').click()">📎</button>
+                    <input type="text" id="chat-input" placeholder="Сообщение..." onkeydown="if(event.key==='Enter')sendMessage()">
+                    <button class="btn btn-primary" style="padding:8px 16px;" onclick="sendMessage()">➤</button>
+                    <button class="record-btn" id="record-btn" onclick="toggleVoiceRecord()">🎤</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-alert" class="custom-modal-overlay">
+        <div class="custom-modal">
+            <h3 id="alert-title">Внимание</h3>
+            <p id="alert-message"></p>
+            <button class="btn btn-primary" style="width:100%;" onclick="Navigation.closeModal('modal-alert')">ОК</button>
+        </div>
+    </div>
+
+    <script>
+        let currentChatPartner = null;
+        let currentChatClubId = null;
+        let currentChatType = 'personal';
+        let isInChat = false;
+
+        function getUrlParam(param) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(param);
+        }
+
+        function initPage() {
+            const chatEmail = getUrlParam('chat');
+            if (chatEmail) {
+                openChatWith(decodeURIComponent(chatEmail));
+            } else {
+                showContactsList();
+            }
+        }
+
+        function showContactsList() {
+            isInChat = false;
+            document.getElementById('contacts-page').classList.add('active');
+            document.getElementById('contacts-page').style.display = 'flex';
+            document.getElementById('chat-page').classList.remove('active');
+            document.getElementById('chat-page').style.display = 'none';
+            renderContactsList();
+            Navigation.updateMsgBadge();
+        }
+
+        function showChatPage() {
+            isInChat = true;
+            document.getElementById('contacts-page').classList.remove('active');
+            document.getElementById('contacts-page').style.display = 'none';
+            document.getElementById('chat-page').classList.add('active');
+            document.getElementById('chat-page').style.display = 'flex';
+        }
+
+        function closeChatAndGoBack() {
+            if (isInChat) {
+                showContactsList();
+            } else {
+                Navigation.goBack();
+            }
+        }
+
+        function renderContactsList() {
+            const container = document.getElementById('contacts-list');
+            if (!container) return;
+
+            const contacts = window.AppData.getContactList(window.AppData.activeUserEmail);
+            const userClubs = window.AppData.getUserClubs(window.AppData.activeUserEmail);
+
+            container.innerHTML = '';
+
+            if (userClubs.length > 0) {
+                container.innerHTML += '<h4 style="margin-bottom:8px;color:var(--text-light);">Групповые чаты</h4>';
+                
+                userClubs.forEach(club => {
+                    const chatKey = 'club_' + club.id;
+                    const msgs = window.AppData.clubChats[chatKey] || [];
+                    const lastMsg = msgs[msgs.length - 1];
+                    const preview = lastMsg ? (lastMsg.text.length > 25 ? lastMsg.text.substring(0, 25) + '...' : lastMsg.text) : 'Нет сообщений';
+                    const time = lastMsg ? new Date(lastMsg.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '';
+
+                    container.innerHTML += `
+                        <div class="member-slot" onclick="openClubChat(${club.id})">
+                            <img src="${club.logo || 'https://via.placeholder.com/36/3b82f6/ffffff?text='+club.name.charAt(0)}" class="club-logo-mini" style="width:36px;height:36px;">
+                            <div style="flex:1;">
+                                <strong>${club.name}</strong>
+                                <br><small style="color:var(--text-light);">${preview}</small>
+                            </div>
+                            <div style="text-align:right;">
+                                <span style="font-size:10px;color:var(--text-light);">${time}</span>
+                                <br><span style="font-size:11px;color:var(--text-light);">${club.members.length} уч.</span>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                if (contacts.length > 0) {
+                    container.innerHTML += '<h4 style="margin:12px 0 8px;color:var(--text-light);">Личные сообщения</h4>';
+                }
+            }
+
+            if (contacts.length === 0 && userClubs.length === 0) {
+                container.innerHTML += '<p style="color:var(--text-light);text-align:center; padding:20px;">Нет сообщений.<br>Начните общение с игроками!</p>';
+            } else {
+                contacts.forEach(email => {
+                    const user = window.AppData.usersDatabase[email];
+                    if (!user) return;
+
+                    const key = window.AppData.getChatKey(window.AppData.activeUserEmail, email);
+                    const msgs = window.AppData.messages[key] || [];
+                    const lastMsg = msgs[msgs.length - 1];
+                    const preview = lastMsg ? (lastMsg.type === 'image' ? '📷 Фото' : (lastMsg.text.length > 30 ? lastMsg.text.substring(0, 30) + '...' : lastMsg.text)) : '';
+                    const time = lastMsg ? new Date(lastMsg.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '';
+                    const unread = msgs.filter(m => m.from !== window.AppData.activeUserEmail && m.from !== 'system' && !m.read).length;
+
+                    container.innerHTML += `
+                        <div class="member-slot" onclick="openChatWith('${email}')">
+                            <div class="avatar-mini">
+                                ${user.profile.photo ? `<img src="${user.profile.photo}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : '👤'}
+                            </div>
+                            <div style="flex:1;">
+                                <strong>${user.profile.name}</strong>
+                                <br><small style="color:var(--text-light);">${preview}</small>
+                            </div>
+                            <div style="text-align:right;">
+                                <span style="font-size:10px;color:var(--text-light);">${time}</span>
+                                ${unread > 0 ? `<br><span style="background:var(--danger);color:white;font-size:10px;padding:2px 6px;border-radius:10px;">${unread}</span>` : ''}
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+        }
+
+        function openChatWith(email) {
+            currentChatPartner = email;
+            currentChatType = 'personal';
+            currentChatClubId = null;
+            
+            const user = window.AppData.usersDatabase[email];
+            const bar = document.getElementById('chat-header-bar');
+            
+            if (user && bar) {
+                bar.style.display = 'flex';
+                bar.innerHTML = `
+                    <div class="chat-header-avatar">
+                        ${user.profile.photo ? `<img src="${user.profile.photo}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : '👤'}
+                    </div>
+                    <div style="flex:1;">
+                        <strong>${user.profile.name}</strong>
+                        <br><small>${user.profile.hashtag}</small>
+                    </div>
+                `;
+                bar.onclick = () => {
+                    window.location.href = `profile.html?email=${encodeURIComponent(email)}`;
+                };
+            }
+            
+            document.getElementById('chat-header').innerHTML = user ? `Чат с ${user.profile.name}` : 'Чат';
+            document.getElementById('chat-input-area').style.display = 'flex';
+            
+            showChatPage();
+            renderChatMessages();
+            markAsRead(email);
+            Navigation.updateMsgBadge();
+        }
+
+        function openClubChat(clubId) {
+            currentChatClubId = clubId;
+            currentChatType = 'club';
+            currentChatPartner = null;
+            
+            const club = window.AppData.globalClubs.find(c => c.id === clubId);
+            const bar = document.getElementById('chat-header-bar');
+            
+            if (club && bar) {
+                bar.style.display = 'flex';
+                bar.innerHTML = `
+                    <img src="${club.logo || 'https://via.placeholder.com/40/3b82f6/ffffff?text='+club.name.charAt(0)}" class="club-logo-mini" style="width:40px;height:40px;">
+                    <div style="flex:1;">
+                        <strong>${club.name}</strong>
+                        <br><small>Групповой чат • ${club.members.length} участников</small>
+                    </div>
+                `;
+                bar.onclick = () => {
+                    window.location.href = `club-detail.html?id=${clubId}`;
+                };
+            }
+            
+            document.getElementById('chat-header').innerHTML = club ? `Чат клуба ${club.name}` : 'Чат';
+            document.getElementById('chat-input-area').style.display = 'flex';
+            
+            showChatPage();
+            renderClubChatMessages(clubId);
+            Navigation.updateMsgBadge();
+        }
+
+        function renderChatMessages() {
+            if (!currentChatPartner) return;
+            
+            const container = document.getElementById('chat-messages');
+            const key = window.AppData.getChatKey(window.AppData.activeUserEmail, currentChatPartner);
+            const msgs = window.AppData.messages[key] || [];
+            
+            container.innerHTML = '';
+            
+            if (msgs.length === 0) {
+                container.innerHTML = '<p style="color:var(--text-light);text-align:center; padding:20px;">Начните переписку!</p>';
+            } else {
+                msgs.forEach(m => {
+                    const isMe = m.from === window.AppData.activeUserEmail;
+                    const isSystem = m.from === 'system';
+                    const time = new Date(m.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                    
+                    if (isSystem) {
+                        container.innerHTML += `
+                            <div style="text-align:center; margin:12px;">
+                                <span style="background:#f1f5f9; color:var(--text-light); padding:4px 12px; border-radius:8px; font-size:12px;">${m.text}</span>
+                            </div>
+                        `;
+                    } else if (m.type === 'image') {
+                        container.innerHTML += `
+                            <div style="text-align:${isMe?'right':'left'};margin:8px;">
+                                <div style="display:inline-block;max-width:70%;">
+                                    <img src="${m.text}" style="max-width:200px;border-radius:10px;display:block;">
+                                    <div style="font-size:10px;margin-top:4px;opacity:0.5;text-align:right;">${time}</div>
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        container.innerHTML += `
+                            <div class="chat-msg-bubble" style="text-align:${isMe?'right':'left'};">
+                                <div style="display:inline-block;background:${isMe?'#3b82f6':'#f1f5f9'};color:${isMe?'white':'#0f172a'};padding:8px 14px;border-radius:12px;max-width:70%;font-size:14px;">
+                                    ${m.text}
+                                    <div style="font-size:10px;margin-top:4px;opacity:0.7;">${time}</div>
+                                </div>
+                            </div>
+                        `;
+                    }
+                });
+            }
+            
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function renderClubChatMessages(clubId) {
+            const container = document.getElementById('chat-messages');
+            const chatKey = 'club_' + clubId;
+            const msgs = window.AppData.clubChats[chatKey] || [];
+            
+            container.innerHTML = '';
+            
+            if (msgs.length === 0) {
+                container.innerHTML = '<p style="color:var(--text-light);text-align:center; padding:20px;">Нет сообщений. Начните общение!</p>';
+            } else {
+                msgs.forEach(m => {
+                    const user = window.AppData.usersDatabase[m.from];
+                    const senderName = user ? user.profile.name : 'Неизвестный';
+                    const senderPhoto = user?.profile?.photo || '';
+                    const time = new Date(m.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                    const isMe = m.from === window.AppData.activeUserEmail;
+                    
+                    container.innerHTML += `
+                        <div class="chat-msg-bubble" style="text-align:${isMe?'right':'left'};margin:8px;">
+                            ${!isMe ? `
+                                <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;cursor:pointer;" onclick="window.location.href='profile.html?email=${encodeURIComponent(m.from)}'">
+                                    <div class="avatar-mini" style="width:24px;height:24px;">
+                                        ${senderPhoto ? `<img src="${senderPhoto}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : '👤'}
+                                    </div>
+                                    <span class="chat-msg-sender">${senderName}</span>
+                                </div>
+                            ` : ''}
+                            <div style="display:inline-block;background:${isMe?'#3b82f6':'#f1f5f9'};color:${isMe?'white':'#0f172a'};padding:6px 12px;border-radius:10px;max-width:70%;font-size:13px;">
+                                ${m.text}
+                                <div style="font-size:9px;margin-top:3px;opacity:0.7;">${time}</div>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+            
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('chat-input');
+            const text = input.value.trim();
+            if (!text) return;
+
+            if (currentChatType === 'club') {
+                if (!currentChatClubId) return;
+                const chatKey = 'club_' + currentChatClubId;
+                if (!window.AppData.clubChats[chatKey]) window.AppData.clubChats[chatKey] = [];
+                window.AppData.clubChats[chatKey].push({
+                    from: window.AppData.activeUserEmail,
+                    text,
+                    timestamp: Date.now(),
+                    type: 'text'
+                });
+                window.AppData.saveClubChats();
+                input.value = '';
+                renderClubChatMessages(currentChatClubId);
+            } else {
+                if (!currentChatPartner) return;
+                const key = window.AppData.getChatKey(window.AppData.activeUserEmail, currentChatPartner);
+                if (!window.AppData.messages[key]) window.AppData.messages[key] = [];
+                window.AppData.messages[key].push({
+                    from: window.AppData.activeUserEmail,
+                    text,
+                    timestamp: Date.now(),
+                    type: 'text'
+                });
+                window.AppData.saveMessages();
+                input.value = '';
+                renderChatMessages();
+            }
+            
+            Navigation.updateMsgBadge();
+        }
+
+        function sendPhoto() {
+            const file = document.getElementById('chat-file-input').files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                if (currentChatType === 'club') {
+                    if (!currentChatClubId) return;
+                    const chatKey = 'club_' + currentChatClubId;
+                    if (!window.AppData.clubChats[chatKey]) window.AppData.clubChats[chatKey] = [];
+                    window.AppData.clubChats[chatKey].push({
+                        from: window.AppData.activeUserEmail,
+                        text: e.target.result,
+                        timestamp: Date.now(),
+                        type: 'image'
+                    });
+                    window.AppData.saveClubChats();
+                    renderClubChatMessages(currentChatClubId);
+                } else {
+                    if (!currentChatPartner) return;
+                    const key = window.AppData.getChatKey(window.AppData.activeUserEmail, currentChatPartner);
+                    if (!window.AppData.messages[key]) window.AppData.messages[key] = [];
+                    window.AppData.messages[key].push({
+                        from: window.AppData.activeUserEmail,
+                        text: e.target.result,
+                        timestamp: Date.now(),
+                        type: 'image'
+                    });
+                    window.AppData.saveMessages();
+                    renderChatMessages();
+                }
+                
+                Navigation.updateMsgBadge();
+            };
+            
+            reader.readAsDataURL(file);
+            document.getElementById('chat-file-input').value = '';
+        }
+
+        function toggleVoiceRecord() {
+            Navigation.showAlert("Аудио", "Запись голосовых сообщений пока в разработке.");
+        }
+
+        function markAsRead(partner) {
+            const key = window.AppData.getChatKey(window.AppData.activeUserEmail, partner);
+            if (window.AppData.messages[key]) {
+                window.AppData.messages[key].forEach(m => {
+                    if (m.from === partner) m.read = true;
+                });
+                window.AppData.saveMessages();
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            Navigation.init();
+            initPage();
+        });
+    </script>
+</body>
+</html>
