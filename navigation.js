@@ -34,13 +34,11 @@
         goBack() {
             const hist = this.getHistory();
             if (hist.length >= 2) {
-                // Убираем текущую страницу
                 hist.pop();
                 const prevPage = hist[hist.length - 1];
                 sessionStorage.setItem('nav_history', JSON.stringify(hist));
                 window.location.href = prevPage;
             } else {
-                // Если истории нет, идём на главную
                 window.location.href = 'clubs.html';
             }
         },
@@ -110,17 +108,15 @@
         },
         
         init() {
-            // Проверяем авторизацию на всех страницах кроме login.html
             const currentPage = window.location.pathname.split('/').pop();
-            if (currentPage !== 'login.html' && currentPage !== '') {
+            if (currentPage !== 'index.html' && currentPage !== '') {
                 const activeEmail = window.AppData.activeUserEmail;
                 if (!activeEmail || !window.AppData.usersDatabase[activeEmail]) {
-                    window.location.href = 'login.html';
+                    window.location.href = 'index.html';
                     return;
                 }
             }
             
-            // Добавляем текущую страницу в историю если её там нет
             const hist = this.getHistory();
             const currentUrl = window.location.href;
             if (hist.length === 0 || hist[hist.length - 1] !== currentUrl) {
@@ -133,7 +129,6 @@
         }
     };
     
-    // Инициализация при загрузке страницы
     document.addEventListener('DOMContentLoaded', () => {
         window.Navigation.init();
     });
