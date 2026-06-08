@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Football Stats - Лиги</title>
+    <link rel="stylesheet" href="design.css">
+    <script src="data.js"></script>
+    <script src="navigation.js"></script>
+</head>
+<body>
+    <div id="profile-widget">
+        <div class="profile-btn" id="top-profile-btn" onclick="Navigation.navigateTo('profile.html')">
+            <div class="avatar-mini" id="widget-avatar">👤</div>
+            <span id="widget-name">Игрок</span>
+        </div>
+        <div class="msg-btn" onclick="Navigation.navigateTo('message.html')">
+            <span style="font-size:16px;">✉</span>
+            <div class="msg-badge" id="msg-badge" style="display:none;">0</div>
+        </div>
+    </div>
+
+    <div class="page active">
+        <div class="window" style="max-width:640px; padding-bottom: 80px;">
+            <button class="back-btn" onclick="Navigation.goBack()">←</button>
+            <div id="league-page-content"></div>
+        </div>
+    </div>
+
+    <div id="join-league-bar" class="join-league-bar" style="display:none;">
+        <button class="join-league-btn" onclick="joinCurrentLeague()">Войти в лигу</button>
+    </div>
+
+    <div id="league-members-modal" class="custom-modal-overlay">
+        <div class="custom-modal" style="max-width:500px; text-align:left; max-height:80vh; overflow-y:auto;">
+            <h3 style="text-align:center;" id="lm-title">Участники лиги</h3>
+            <div class="search-bar">
+                <input type="text" id="lm-search-input" placeholder="Поиск участника..." oninput="renderLeagueMembersList()">
+            </div>
+            <div id="league-members-list" style="max-height:250px; overflow-y:auto;"></div>
+            <div id="lm-leave-btn-container" style="text-align:center; margin-top:12px;"></div>
+            <button class="btn" style="background:#e2e8f0; width:100%; margin-top:8px;" onclick="Navigation.closeModal('league-members-modal')">Закрыть</button>
+        </div>
+    </div>
+
+    <div id="global-leagues-modal" class="custom-modal-overlay">
+        <div class="custom-modal" style="max-width:550px; text-align:left; max-height:85vh; overflow-y:auto;">
+            <h3 style="text-align:center;">Все лиги</h3>
+            <div class="search-bar">
+                <input type="text" id="gl-search-input" placeholder="Поиск лиги..." oninput="renderGlobalLeaguesModalList()">
+            </div>
+            <div id="global-leagues-modal-list" class="leagues-list"></div>
+            <button class="btn" style="background:#e2e8f0; width:100%; margin-top:12px;" onclick="Navigation.closeModal('global-leagues-modal')">Закрыть</button>
+        </div>
+    </div>
+
+    <div id="public-profile-modal" class="custom-modal-overlay">
+        <div class="custom-modal" style="max-width:500px; text-align:left;">
+            <div id="public-profile-content" style="max-height:70vh; overflow-y:auto;"></div>
+            <button class="btn" style="background:#e2e8f0; width:100%; margin-top:15px;" onclick="Navigation.closeModal('public-profile-modal')">Закрыть</button>
+        </div>
+    </div>
+
+    <div id="modal-alert" class="custom-modal-overlay">
+        <div class="custom-modal">
+            <h3 id="alert-title">Внимание</h3>
+            <p id="alert-message"></p>
+            <button class="btn btn-primary" style="width:100%;" onclick="Navigation.closeModal('modal-alert')">ОК</button>
+        </div>
+    </div>
+
+    <script>
+        let leagueSubTab = 'news';
+        let currentLeagueId = null;
+        let newsImageIndices = {};
+        let currentLMLeagueId = null;
+        let hideScores = false;
+
+        const HIDE_SCORES_KEY = 'football_tracker_pro_v4_hide_scores';
+        const POST_CHAT_KEY = 'football_tracker_pro_v4_post_chat';
+
+        function getPostChatMessages(leagueId, newsIndex) {
+            const saved = localStorage.getItem(POST_CHAT_KEY);
+            const all = saved ? JSON.parse(saved) : {};
+            const key = `${leagueId}_${newsIndex}`;
+            return all[key] || [];
+        }
+
+        function getLastChatters(leagueId, newsIndex) {
+            const msgs = getPostChatMessages(leagueId, newsIndex);
+            const emails = new Set();
+            const result = [];
+            for (let i = msgs.length - 1; i >= 0; i--) {
+                if (!emails.has(msgs[i].email) && msgs[i].email !== 'system') {
+                    emails.add(msgs[i].email);
+                    result.push(msgs[i].email);
+                }
+                if (result.length >= 3) break;
+            }
+            return result;
+        }
+
+        function loadHideScoresSetting(leagueId) {
+            const saved = localStorage.getItem(HIDE_SCORES_KEY);
+            if (saved) {
+                const settings = JSON.parse(saved);
+                return settings[leagueId] || false;
+            }
+            return false;
+        }
+
+        function saveHideScoresSetting(leagueId, value) {
+            const saved = localStorage.getItem(HIDE_SCORES_KEY);
+            const settings = saved ? JSON.parse(saved) : {};
+            settings[leagueId] = value;
+            localStorage.setItem(HIDE_SCORES_KEY, JSON.stringify(settings));
+        }
+
+        function getUrlParam(param) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(param);
+        }
+
+        function initPage() {
+            const leagueId = getUrlParam('id');
+            if (leagueId) {
+                currentLeagueId = parseInt(leagueId);
+                leagueSubTab = 'news';
+                newsImageIndices = {};
+                hideScores = loadHideScoresSetting(currentLeagueId);
+
+                if (window.AppData.leagueNotifications[currentLeagueId]) {
+                    window.AppData.leagueNotifications[currentLeagueId] = 0;
+                    window.AppData.saveLeagueNotifications();
+                }
+
+                renderLeaguePage();
+            } else {
+                renderGlobalLeaguesModalList();
+                Navigation.openModal('global-leagues-modal');
+            }
+        }
+
+        function toggleHideScores() {
+            hideScores = !hideScores;
+            saveHideScoresSetting(currentLeagueId, hideScores);
+            renderLeaguePage();
+        }
+
+        function renderLeaguePage() {
+            const league = window.AppData.testLeagues.find(l => l.id === currentLeagueId);
+            if (!league) {
+                document.getElementById('league-page-content').innerHTML = '<p style="text-align:center; padding:40px;">Лига не найдена.</p>';
+                return;
+            }
+
+            const isMember = window.AppData.isUserInLeague(currentLeagueId, window.AppData.activeUserEmail);
+            const container = document.getElementById('league-page-content');
+            const joinBar = document.getElementById('join-league-bar');
+
+            if (!isMember) {
+                joinBar.style.display = 'flex';
+                joinBar.classList.remove('hiding');
+            } else {
+                joinBar.style.display = 'none';
+            }
+
+            let html = `
+                <div class="league-page-header">
+                    <div class="league-page-logo">${league.logo}</div>
+                    <div class="league-page-name">${league.name}</div>
+                    <div class="league-page-stats">
+                        <div class="stat-pill" onclick="openLeagueMembers(${league.id})">
+                            Участников: <strong>${league.members}</strong>
+                        </div>
+                        <div class="stat-pill">
+                            Онлайн: <strong>${league.online}</strong>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            html += `
+                <div class="sub-tabs">
+                    <button class="sub-tab ${leagueSubTab === 'news' ? 'active' : ''}" onclick="leagueSubTab='news'; renderLeaguePage();">Новости</button>
+                    <button class="sub-tab ${leagueSubTab === 'clubs' ? 'active' : ''}" ${isMember ? "onclick=\"leagueSubTab='clubs'; renderLeaguePage();\"" : 'disabled'}>Клубы</button>
+                    <button class="sub-tab ${leagueSubTab === 'results' ? 'active' : ''}" ${isMember ? "onclick=\"leagueSubTab='results'; renderLeaguePage();\"" : 'disabled'}>Результаты</button>
+                    <button class="sub-tab" disabled>Чат</button>
+                </div>
+            `;
+
+            if (leagueSubTab === 'news') {
+                const news = window.AppData.testNews[currentLeagueId] || [];
+                if (news.length === 0) {
+                    html += '<p style="text-align:center; color:var(--text-light);">Новостей пока нет.</p>';
+                } else {
+                    news.forEach((item, idx) => {
+                        if (!newsImageIndices[idx]) newsImageIndices[idx] = 0;
+                        const imgIdx = newsImageIndices[idx];
+                        const imgs = item.images || [];
+
+                        html += `<div class="news-item">`;
+                        html += `<div class="news-time-row"><div class="line"></div><span class="time">${item.time}</span></div>`;
+
+                        if (imgs.length > 0) {
+                            html += `<div class="news-images">`;
+                            html += `<img src="${imgs[imgIdx]}" alt="news" onerror="this.src='https://via.placeholder.com/600x300/e2e8f0/64748b?text=News'">`;
+                            if (imgs.length > 1) {
+                                html += `<button class="news-img-nav prev" onclick="event.stopPropagation(); newsImageIndices[${idx}]=(newsImageIndices[${idx}]-1+${imgs.length})%${imgs.length}; renderLeaguePage();">‹</button>`;
+                                html += `<button class="news-img-nav next" onclick="event.stopPropagation(); newsImageIndices[${idx}]=(newsImageIndices[${idx}]+1)%${imgs.length}; renderLeaguePage();">›</button>`;
+                            }
+                            html += `</div>`;
+                            if (imgs.length > 1) {
+                                html += `<div class="news-dots">`;
+                                imgs.forEach((_, i) => {
+                                    html += `<div class="news-dot ${i === imgIdx ? 'active' : ''}"></div>`;
+                                });
+                                html += `</div>`;
+                            }
+                        }
+
+                        html += `
+                            <div class="news-title">${item.title}</div>
+                            <div class="news-divider"></div>
+                            <div class="news-preview" id="news-preview-${idx}">${item.preview}...</div>
+                            <div class="news-full" id="news-full-${idx}">${item.full}</div>
+                            <button class="news-toggle-btn" id="news-toggle-${idx}" onclick="toggleNews(${idx})">▼</button>
+                        `;
+
+                        // Комментарии как в Telegram
+                        const chatMsgs = getPostChatMessages(currentLeagueId, idx);
+                        const lastChatters = getLastChatters(currentLeagueId, idx);
+                        
+                        html += `<div class="news-comments-bar" onclick="window.location.href='post-chat.html?league=${currentLeagueId}&news=${idx}'">`;
+                        html += `<div class="news-comments-avatars">`;
+                        if (lastChatters.length === 0) {
+                            html += `<span style="font-size:12px; color:var(--text-light);">Нет сообщений</span>`;
+                        } else {
+                            lastChatters.forEach(email => {
+                                const u = window.AppData.usersDatabase[email];
+                                if (u) {
+                                    html += `<div class="avatar-mini" style="width:24px;height:24px;margin-right:-6px;border:2px solid white;">${u.profile.photo ? `<img src="${u.profile.photo}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : '👤'}</div>`;
+                                }
+                            });
+                        }
+                        html += `</div>`;
+                        html += `<span class="news-comments-count">💬 ${chatMsgs.length}</span>`;
+                        html += `</div>`;
+
+                        html += `</div>`;
+                    });
+                }
+            } else if (leagueSubTab === 'clubs' && isMember) {
+                html += `
+                    <div class="standings-header">
+                        <div class="standings-pos">#</div>
+                        <div class="standings-club">Клуб</div>
+                        <div class="standings-stats">
+                            <span>И</span><span>В</span><span>Н</span><span>П</span><span>О</span>
+                        </div>
+                    </div>
+                `;
+
+                (window.AppData.testStandings[currentLeagueId] || []).forEach((t, i) => {
+                    let rowClass = '', posClass = 'normal';
+                    if (i === 0) { rowClass = 'gold'; posClass = 'gold'; }
+                    else if (i === 1) { rowClass = 'silver'; posClass = 'silver'; }
+                    else if (i === 2) { rowClass = 'bronze'; posClass = 'bronze'; }
+
+                    html += `
+                        <div class="standings-row ${rowClass}" onclick="openLeagueClubProfile('${t.name}')">
+                            <div class="standings-pos ${posClass}">${i+1}</div>
+                            <div class="standings-club">
+                                <img src="${t.logo || 'https://via.placeholder.com/32/3b82f6/ffffff?text='+t.name.charAt(0)}" onerror="this.style.display='none'">
+                                <span>${t.name}</span>
+                            </div>
+                            <div class="standings-stats">
+                                <span>${t.gp}</span>
+                                <span>${t.w}</span>
+                                <span>${t.d}</span>
+                                <span>${t.l}</span>
+                                <span style="font-weight:700;color:var(--primary);">${t.pts}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+            } else if (leagueSubTab === 'results' && isMember) {
+                html += `
+                    <div style="display:flex; justify-content:flex-end; margin-bottom:12px;">
+                        <button class="toggle-btn ${hideScores ? 'active' : ''}" onclick="toggleHideScores()" style="display:flex; align-items:center; gap:6px;">
+                            ${hideScores ? '🙈 Счёт скрыт' : '👁 Скрыть счёт'}
+                        </button>
+                    </div>
+                `;
+                html += renderMatchesList(currentLeagueId);
+            } else if (!isMember && leagueSubTab !== 'news') {
+                html += '<p style="text-align:center; color:var(--text-light); padding:40px;">Вступите в лигу, чтобы получить доступ.</p>';
+            }
+
+            container.innerHTML = html;
+        }
+
+        function renderMatchesList(leagueId) {
+            const matches = window.AppData.testMatches[leagueId] || [];
+            if (matches.length === 0) {
+                return '<p style="text-align:center; color:var(--text-light);">Матчей пока нет.</p>';
+            }
+
+            let html = '';
+            const grouped = {};
+            matches.forEach(m => {
+                if (!grouped[m.date]) grouped[m.date] = [];
+                grouped[m.date].push(m);
+            });
+
+            Object.keys(grouped).forEach(date => {
+                html += `<div class="news-time-row"><div class="line"></div><span class="time">${date}</span></div>`;
+                grouped[date].forEach(m => {
+                    html += buildMatchSlotHTML(m);
+                });
+            });
+
+            return html;
+        }
+
+        function buildMatchSlotHTML(m) {
+            const homeColor = m.home.color || '#3b82f6';
+            const awayColor = m.away.color || '#ef4444';
+            let leftContent = '';
+            let rightContent = '';
+            let statusIndicator = '';
+
+            if (hideScores) {
+                if (m.played) {
+                    leftContent = `<span class="match-score-hidden">?</span>`;
+                    rightContent = `<span class="match-score-hidden">?</span>`;
+                    statusIndicator = `<div class="match-status-badge played">✓</div>`;
+                } else {
+                    const parts = m.time.split(':');
+                    leftContent = `<span class="match-time-left">${parts[0]}</span>`;
+                    rightContent = `<span class="match-time-right">${parts[1]}</span>`;
+                    statusIndicator = `<div class="match-status-badge upcoming">${m.time}</div>`;
+                }
+            } else {
+                if (m.played) {
+                    leftContent = `<span class="match-score-left">${m.home.goals}</span>`;
+                    rightContent = `<span class="match-score-right">${m.away.goals}</span>`;
+                } else {
+                    const parts = m.time.split(':');
+                    leftContent = `<span class="match-time-left">${parts[0]}</span>`;
+                    rightContent = `<span class="match-time-right">${parts[1]}</span>`;
+                }
+            }
+
+            const homeLogo = m.home.logo || 'https://via.placeholder.com/40/ffffff/000000?text=' + m.home.name.charAt(0);
+            const awayLogo = m.away.logo || 'https://via.placeholder.com/40/ffffff/000000?text=' + m.away.name.charAt(0);
+
+            return `
+                <div class="match-slot-wrapper">
+                    <div class="match-slot" onclick="window.location.href='res.html?id=${m.id}&league=${currentLeagueId}'">
+                        <div class="match-side left" style="background: linear-gradient(135deg, ${homeColor}, ${Navigation.adjustColor(homeColor, -30)});">
+                            <img src="${homeLogo}" alt="" onerror="this.style.display='none'">
+                            <span class="club-name">${m.home.name}</span>
+                        </div>
+                        ${leftContent}
+                        <div class="match-center"><div class="match-divider-line"></div></div>
+                        ${rightContent}
+                        <div class="match-side right" style="background: linear-gradient(135deg, ${awayColor}, ${Navigation.adjustColor(awayColor, -30)});">
+                            <img src="${awayLogo}" alt="" onerror="this.style.display='none'">
+                            <span class="club-name">${m.away.name}</span>
+                        </div>
+                    </div>
+                    ${statusIndicator}
+                </div>
+            `;
+        }
+
+        function toggleNews(idx) {
+            const preview = document.getElementById('news-preview-'+idx);
+            const full = document.getElementById('news-full-'+idx);
+            const btn = document.getElementById('news-toggle-'+idx);
+            if (!preview || !full || !btn) return;
+            if (full.style.display === 'block') {
+                full.style.display = 'none';
+                preview.style.display = 'block';
+                btn.innerHTML = '▼';
+            } else {
+                full.style.display = 'block';
+                preview.style.display = 'none';
+                btn.innerHTML = '▲';
+            }
+        }
+
+        function openLeagueClubProfile(name) {
+            window.location.href = `club-detail.html?name=${encodeURIComponent(name)}`;
+        }
+
+        function joinCurrentLeague() {
+            if (!currentLeagueId) return;
+            if (!window.AppData.userLeagues[window.AppData.activeUserEmail]) {
+                window.AppData.userLeagues[window.AppData.activeUserEmail] = [];
+            }
+            if (!window.AppData.userLeagues[window.AppData.activeUserEmail].includes(currentLeagueId)) {
+                window.AppData.userLeagues[window.AppData.activeUserEmail].push(currentLeagueId);
+                window.AppData.saveUserLeagues();
+            }
+            const joinBar = document.getElementById('join-league-bar');
+            joinBar.classList.add('hiding');
+            setTimeout(() => {
+                joinBar.style.display = 'none';
+                joinBar.classList.remove('hiding');
+                renderLeaguePage();
+            }, 400);
+            Navigation.showAlert("Добро пожаловать!", "Вы вступили в лигу!");
+        }
+
+        function openLeagueMembers(leagueId) {
+            currentLMLeagueId = leagueId;
+            renderLeagueMembersList();
+            Navigation.openModal('league-members-modal');
+        }
+
+        function renderLeagueMembersList() {
+            const league = window.AppData.testLeagues.find(l => l.id === currentLMLeagueId);
+            if (!league) return;
+            const search = document.getElementById('lm-search-input')?.value.toLowerCase() || '';
+            const container = document.getElementById('league-members-list');
+            const leaveContainer = document.getElementById('lm-leave-btn-container');
+            container.innerHTML = '';
+            document.getElementById('lm-title').innerText = `Участники ${league.name}`;
+            const isMember = window.AppData.isUserInLeague(currentLMLeagueId, window.AppData.activeUserEmail);
+            if (isMember) {
+                leaveContainer.innerHTML = `<button class="btn btn-danger" style="width:100%; margin-top:8px;" onclick="leaveLeague(${currentLMLeagueId})">Выйти из лиги</button>`;
+            } else {
+                leaveContainer.innerHTML = '';
+            }
+            const filtered = league.participants.filter(p => {
+                const user = window.AppData.usersDatabase[p.email];
+                return user && user.profile.name.toLowerCase().includes(search);
+            });
+            if (filtered.length === 0) {
+                container.innerHTML = '<p style="color:var(--text-light);text-align:center;">Участников не найдено.</p>';
+            } else {
+                filtered.forEach(p => {
+                    const user = window.AppData.usersDatabase[p.email];
+                    if (!user) return;
+                    const club = p.clubId ? window.AppData.globalClubs.find(c => c.id === p.clubId) : null;
+                    let roleBadge = '';
+                    if (p.role === 'owner') roleBadge = '<span class="role-badge owner">Owner</span>';
+                    else if (p.role === 'admin') roleBadge = '<span class="role-badge admin">Admin</span>';
+                    container.innerHTML += `
+                        <div class="league-member-row" onclick="viewPublicProfile('${p.email}')">
+                            <div class="avatar-mini" style="position:relative;">
+                                ${user.profile.photo ? `<img src="${user.profile.photo}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : '👤'}
+                                ${p.online ? '<div class="online-dot"></div>' : ''}
+                            </div>
+                            <div style="flex:1;">
+                                <strong>${user.profile.name}</strong>
+                                <small style="display:block;color:var(--text-light);">${user.profile.hashtag}</small>
+                            </div>
+                            ${roleBadge}
+                            ${club ? `<img src="${club.logo || 'https://via.placeholder.com/32/3b82f6/ffffff?text='+club.name.charAt(0)}" class="club-logo-mini" style="width:28px;height:28px;margin-left:8px;" onclick="event.stopPropagation(); window.location.href='club-detail.html?id=${club.id}'">` : ''}
+                        </div>
+                    `;
+                });
+            }
+        }
+
+        function leaveLeague(leagueId) {
+            if (!window.AppData.userLeagues[window.AppData.activeUserEmail]) return;
+            window.AppData.userLeagues[window.AppData.activeUserEmail] =
+                window.AppData.userLeagues[window.AppData.activeUserEmail].filter(id => id !== leagueId);
+            window.AppData.saveUserLeagues();
+            Navigation.closeModal('league-members-modal');
+            if (currentLeagueId === leagueId) {
+                renderLeaguePage();
+            }
+            Navigation.showAlert("Вы вышли", "Вы покинули лигу.");
+        }
+
+        function renderGlobalLeaguesModalList() {
+            const container = document.getElementById('global-leagues-modal-list');
+            const search = document.getElementById('gl-search-input')?.value.toLowerCase() || '';
+            if (!container) return;
+            container.innerHTML = '';
+            window.AppData.testLeagues
+                .filter(l => l.name.toLowerCase().includes(search))
+                .forEach(league => {
+                    const notifCount = window.AppData.getLeagueNotificationCount(league.id);
+                    const notifBadge = notifCount > 0 ? `<div class="notification-badge">${notifCount}</div>` : '';
+                    container.innerHTML += `
+                        <div class="league-card-horizontal" onclick="Navigation.closeModal('global-leagues-modal'); window.location.href='league.html?id=${league.id}'">
+                            ${notifBadge}
+                            <div class="ll-logo">${league.logo}</div>
+                            <div class="ll-info">
+                                <div class="ll-name">${league.name}</div>
+                                <div class="ll-stats">
+                                    <div class="ll-stat">
+                                        <div class="ll-stat-num">${league.members}</div>
+                                        <div class="ll-stat-label">участников</div>
+                                    </div>
+                                    <div class="ll-stat">
+                                        <div class="ll-stat-num">${league.online}</div>
+                                        <div class="ll-stat-label">онлайн</div>
+                                    </div>
+                                    <div class="ll-stat">
+                                        <div class="ll-stat-num">${league.season}</div>
+                                        <div class="ll-stat-label">сезон</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="ll-socials">
+                                <button class="social-btn" onclick="event.stopPropagation();" title="Discord">🎮</button>
+                                <button class="social-btn" onclick="event.stopPropagation();" title="TikTok">🎵</button>
+                                <button class="social-btn" onclick="event.stopPropagation();" title="Telegram">📬</button>
+                            </div>
+                        </div>
+                    `;
+                });
+        }
+
+        function viewPublicProfile(email) {
+            if (!email) return;
+            window.location.href = `profile.html?email=${encodeURIComponent(email)}`;
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            Navigation.init();
+            initPage();
+        });
+    </script>
+</body>
+</html>

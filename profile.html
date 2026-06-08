@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Football Stats - Профиль</title>
+    <link rel="stylesheet" href="design.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="data.js"></script>
+    <script src="navigation.js"></script>
+</head>
+<body>
+    <div id="profile-widget">
+        <div class="profile-btn" id="top-profile-btn" onclick="Navigation.navigateTo('profile.html')">
+            <div class="avatar-mini" id="widget-avatar">👤</div>
+            <span id="widget-name">Игрок</span>
+        </div>
+        <div class="msg-btn" onclick="Navigation.navigateTo('message.html')">
+            <span style="font-size:16px;">✉</span>
+            <div class="msg-badge" id="msg-badge" style="display:none;">0</div>
+        </div>
+    </div>
+
+    <div class="page active">
+        <div class="window" style="max-width:560px;">
+            <button class="back-btn" onclick="goBack()">←</button>
+            <button class="settings-btn" id="profile-settings-btn" onclick="openProfileSettings()">⚙</button>
+            <div id="profile-content"></div>
+        </div>
+    </div>
+
+    <div id="profile-settings-modal" class="custom-modal-overlay">
+        <div class="custom-modal" style="max-width:450px;">
+            <h3 style="margin-bottom:20px;">Настройки профиля</h3>
+            <div style="display:flex; gap:20px; align-items:center; margin-bottom:20px;">
+                <div style="width:80px; height:80px; border-radius:50%; overflow:hidden; border:3px solid var(--primary); cursor:pointer;" onclick="document.getElementById('settings-avatar-upload').click()">
+                    <img id="settings-avatar-preview" src="" style="width:100%; height:100%; object-fit:cover;">
+                    <input type="file" id="settings-avatar-upload" accept="image/*" style="display:none;" onchange="previewSettingsAvatar(event)">
+                </div>
+                <div style="flex:1;">
+                    <input type="text" id="settings-nick" placeholder="Никнейм" class="auth-input">
+                    <input type="text" id="settings-hashtag" placeholder="Хэштег" class="auth-input">
+                </div>
+            </div>
+            <select id="settings-nat" class="auth-input">
+                <option value="🇰🇿">🇰🇿 Казахстан</option>
+                <option value="🇷🇺">🇷🇺 Россия</option>
+                <option value="🇩🇪">🇩🇪 Германия</option>
+                <option value="🇪🇸">🇪🇸 Испания</option>
+                <option value="🇬🇧">🇬🇧 Англия</option>
+                <option value="🇫🇷">🇫🇷 Франция</option>
+            </select>
+            <div style="display:flex; gap:10px; margin-top:12px;">
+                <button class="toggle-btn" id="settings-pos-nap" onclick="setSettingsPos('НАП')">НАП</button>
+                <button class="toggle-btn" id="settings-pos-op" onclick="setSettingsPos('ОП')">ОП</button>
+                <button class="toggle-btn" id="settings-pos-unik" onclick="setSettingsPos('Уник')">Уник</button>
+            </div>
+            <div style="display:flex; gap:10px; margin-top:20px;">
+                <button class="btn" style="background:#e2e8f0; flex:1;" onclick="Navigation.closeModal('profile-settings-modal')">Назад</button>
+                <button class="btn btn-success" style="flex:1;" onclick="saveProfileSettings()">Подтвердить</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="public-profile-modal" class="custom-modal-overlay">
+        <div class="custom-modal" style="max-width:500px; text-align:left;">
+            <div id="public-profile-content" style="max-height:70vh; overflow-y:auto;"></div>
+            <button class="btn" style="background:#e2e8f0; width:100%; margin-top:15px;" onclick="Navigation.closeModal('public-profile-modal')">Закрыть</button>
+        </div>
+    </div>
+
+    <div id="modal-alert" class="custom-modal-overlay">
+        <div class="custom-modal">
+            <h3 id="alert-title">Внимание</h3>
+            <p id="alert-message"></p>
+            <button class="btn btn-primary" style="width:100%;" onclick="Navigation.closeModal('modal-alert')">ОК</button>
+        </div>
+    </div>
+
+    <script>
+        let viewingEmail = null;
+        let isOwnProfile = true;
+        let profileTimeMode = 'all';
+        let profileClubMode = false;
+        let tempSettings = {};
+
+        function getUrlParam(param) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(param);
+        }
+
+        function goBack() {
+            Navigation.goBack();
+        }
+
+        function initPage() {
+            const emailParam = getUrlParam('email');
+
+            if (emailParam) {
+                viewingEmail = decodeURIComponent(emailParam);
+                isOwnProfile = (viewingEmail === window.AppData.activeUserEmail);
+            } else {
+                viewingEmail = window.AppData.activeUserEmail;
+                isOwnProfile = true;
+            }
+
+            // Показываем/скрываем кнопку настроек
+            document.getElementById('profile-settings-btn').style.display = isOwnProfile ? 'flex' : 'none';
+
+            // Прячем виджет профиля если смотрим свой профиль (он уже на странице)
+            document.getElementById('top-profile-btn').style.display = isOwnProfile ? 'none' : 'flex';
+
+            renderProfile();
+        }
+
+        function renderProfile() {
+            const user = window.AppData.usersDatabase[viewingEmail];
+            if (!user) {
+                document.getElementById('profile-content').innerHTML = '<p style="text-align:center; padding:40px;">Пользователь не найден.</p>';
+                return;
+            }
+
+            const p = user.profile;
+            const rankInfo = window.AppData.getRank(p.exp);
+            const userClubs = window.AppData.getUserClubs(viewingEmail);
+            const awards = window.AppData.getPlayerAwards(viewingEmail);
+
+            let html = '';
+
+            // Заголовок профиля
+            html += `<div class="profile-header">`;
+            html += `<div class="profile-photo-wrapper">`;
+            html += `<img src="${p.photo || 'data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2290%22 height=%2290%22 fill=%22%23cbd5e1%22><circle cx=%2245%22 cy=%2245%22 r=%2245%22/></svg>'}" class="profile-photo">`;
+            
+            if (isOwnProfile) {
+                html += `<div class="photo-upload-overlay" onclick="document.getElementById('prof-upload').click()">+</div>`;
+                html += `<input type="file" id="prof-upload" style="display:none;" onchange="uploadProfilePhoto(event)">`;
+            }
+            
+            html += `</div>`;
+            html += `<div style="flex:1;">`;
+            html += `<h3 style="font-size:22px;font-weight:700;">${p.name} ${p.nationality}</h3>`;
+            html += `<p style="color:var(--text-light);">${p.hashtag} • ${p.position}</p>`;
+            html += `<p style="color:var(--primary);font-weight:600;">${rankInfo.current.name}</p>`;
+            html += `<p style="font-size:12px;color:var(--text-light);">Создан: ${p.created||'Неизвестно'}</p>`;
+            html += `</div>`;
+
+            // Кнопка "Сообщение" для чужих профилей
+            if (!isOwnProfile) {
+                html += `<button class="btn btn-primary" style="padding:8px 16px;font-size:13px;" onclick="openChatWith('${viewingEmail}')">💬 Сообщение</button>`;
+            }
+            
+            html += `</div>`;
+
+            // Клубы
+            html += `<div class="divider"><span>CLUBS</span></div>`;
+            html += '<div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center;">';
+            if (userClubs.length === 0) {
+                html += '<p style="color:var(--text-light);">Не состоит в клубах.</p>';
+            } else {
+                userClubs.forEach(c => {
+                    html += `
+                        <div style="text-align:center;cursor:pointer;" onclick="window.location.href='club-detail.html?id=${c.id}'">
+                            <img src="${c.logo || 'https://via.placeholder.com/44/3b82f6/ffffff?text='+c.name.charAt(0)}" class="club-logo-mini">
+                            <div style="font-size:11px;margin-top:4px;">${c.name}</div>
+                        </div>
+                    `;
+                });
+            }
+            html += '</div>';
+
+            // Награды
+            html += `<div class="divider"><span>AWARDS</span></div>`;
+            if (awards.length === 0) {
+                html += '<p style="color:var(--text-light);text-align:center;">Наград пока нет.</p>';
+            } else {
+                awards.forEach(a => {
+                    html += `
+                        <div class="trophy-slot">
+                            <div class="trophy-icon">${a.icon}</div>
+                            <div class="trophy-info">
+                                <strong>${a.type}</strong>
+                                <small>${a.league} • Сезон ${a.season} • Клуб: ${a.clubName}</small>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+
+            // Статистика
+            html += `<div class="divider"><span>STATS</span></div>`;
+            html += `
+                <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+                    <button class="toggle-btn ${profileTimeMode==='all'?'active':''}" onclick="profileTimeMode='all';renderProfile();">Всё время</button>
+                    <button class="toggle-btn ${profileTimeMode==='year'?'active':''}" onclick="profileTimeMode='year';renderProfile();">Год</button>
+                    <button class="toggle-btn ${profileTimeMode==='month'?'active':''}" onclick="profileTimeMode='month';renderProfile();">Месяц</button>
+                    <button class="toggle-btn ${profileTimeMode==='week'?'active':''}" onclick="profileTimeMode='week';renderProfile();">Неделя</button>
+                </div>
+                <button class="toggle-btn ${profileClubMode?'active':''}" style="margin-bottom:12px;" onclick="profileClubMode=!profileClubMode;renderProfile();">По клубам</button>
+                <canvas id="profileStatsChart" style="max-height:200px;"></canvas>
+            `;
+
+            // Уровень
+            html += `<div class="divider"><span>LEVEL</span></div>`;
+            html += `
+                <div style="background:#f8fafc;padding:16px;border-radius:12px;border:1px solid #e2e8f0;">
+                    <div style="display:flex;justify-content:space-between;">
+                        <span>Опыт</span>
+                        <span style="color:var(--primary);font-weight:700;">${p.exp} / 5000</span>
+                    </div>
+                    <div style="width:100%;height:14px;background:#e2e8f0;border-radius:10px;overflow:hidden;margin-top:8px;">
+                        <div style="height:100%;background:linear-gradient(90deg,#3b82f6,#8b5cf6);width:${Math.min((p.exp/5000)*100,100)}%;transition:width 0.8s;"></div>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('profile-content').innerHTML = html;
+
+            // График
+            setTimeout(() => {
+                const canvas = document.getElementById('profileStatsChart');
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                const existingChart = Chart.getChart(canvas);
+                if (existingChart) existingChart.destroy();
+                const stats = calculateStats();
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: stats.labels,
+                        datasets: [
+                            {
+                                label: 'Голы',
+                                data: stats.goals,
+                                backgroundColor: 'rgba(16,185,129,0.7)',
+                                borderRadius: 6
+                            },
+                            {
+                                label: 'Ассисты',
+                                data: stats.assists,
+                                backgroundColor: 'rgba(139,92,246,0.7)',
+                                borderRadius: 6
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { position: 'bottom' }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: { stepSize: 1 }
+                            }
+                        }
+                    }
+                });
+            }, 100);
+        }
+
+        function calculateStats() {
+            const userClubs = window.AppData.getUserClubs(viewingEmail);
+            if (profileClubMode) {
+                const labels = [], goals = [], assists = [];
+                userClubs.forEach(c => {
+                    labels.push(c.name);
+                    const mem = c.members.find(m => m.email === viewingEmail);
+                    goals.push(mem?.stats?.goals || Math.floor(Math.random()*15));
+                    assists.push(mem?.stats?.assists || Math.floor(Math.random()*10));
+                });
+                return { labels, goals, assists };
+            } else {
+                let tg = 0, ta = 0;
+                userClubs.forEach(c => {
+                    const mem = c.members.find(m => m.email === viewingEmail);
+                    tg += mem?.stats?.goals || Math.floor(Math.random()*15);
+                    ta += mem?.stats?.assists || Math.floor(Math.random()*10);
+                });
+                return { labels: ['Всего'], goals: [tg], assists: [ta] };
+            }
+        }
+
+        function uploadProfilePhoto(event) {
+            if (event.target.files && event.target.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const user = window.AppData.usersDatabase[window.AppData.activeUserEmail];
+                    user.profile.photo = e.target.result;
+                    window.AppData.saveAll();
+                    Navigation.updateProfileWidget();
+                    renderProfile();
+                };
+                reader.readAsDataURL(event.target.files[0]);
+            }
+        }
+
+        function openChatWith(email) {
+            window.location.href = `message.html?chat=${encodeURIComponent(email)}`;
+        }
+
+        // Настройки профиля (только для своего)
+        function openProfileSettings() {
+            const user = window.AppData.usersDatabase[window.AppData.activeUserEmail];
+            tempSettings = { ...user.profile };
+
+            document.getElementById('settings-nick').value = tempSettings.name;
+            document.getElementById('settings-hashtag').value = tempSettings.hashtag;
+            document.getElementById('settings-nat').value = tempSettings.nationality;
+            document.getElementById('settings-avatar-preview').src = tempSettings.photo || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" fill="%23cbd5e1"><circle cx="40" cy="40" r="40"/></svg>';
+            
+            updateSettingsPosButtons(tempSettings.position);
+            Navigation.openModal('profile-settings-modal');
+        }
+
+        function updateSettingsPosButtons(pos) {
+            document.getElementById('settings-pos-nap').classList.toggle('active', pos === 'НАП');
+            document.getElementById('settings-pos-op').classList.toggle('active', pos === 'ОП');
+            document.getElementById('settings-pos-unik').classList.toggle('active', pos === 'Уник');
+        }
+
+        function setSettingsPos(pos) {
+            tempSettings.position = pos;
+            updateSettingsPosButtons(pos);
+        }
+
+        function previewSettingsAvatar(event) {
+            if (event.target.files && event.target.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    tempSettings.photo = e.target.result;
+                    document.getElementById('settings-avatar-preview').src = e.target.result;
+                };
+                reader.readAsDataURL(event.target.files[0]);
+            }
+        }
+
+        function saveProfileSettings() {
+            const nick = document.getElementById('settings-nick').value.trim();
+            const hashtag = document.getElementById('settings-hashtag').value.trim();
+
+            if (!nick) {
+                Navigation.showAlert("Ошибка", "Введите никнейм");
+                return;
+            }
+            if (!hashtag || !hashtag.startsWith('#')) {
+                Navigation.showAlert("Ошибка", "Хэштег должен начинаться с #");
+                return;
+            }
+
+            const user = window.AppData.usersDatabase[window.AppData.activeUserEmail];
+            user.profile.name = nick;
+            user.profile.hashtag = hashtag;
+            user.profile.nationality = document.getElementById('settings-nat').value;
+            user.profile.position = tempSettings.position;
+            user.profile.photo = tempSettings.photo;
+
+            window.AppData.saveAll();
+            Navigation.closeModal('profile-settings-modal');
+            Navigation.updateProfileWidget();
+            renderProfile();
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            Navigation.init();
+            initPage();
+        });
+    </script>
+</body>
+</html>

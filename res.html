@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Football Stats - Детали матча</title>
+    <link rel="stylesheet" href="design.css">
+    <script src="data.js"></script>
+    <script src="navigation.js"></script>
+</head>
+<body>
+    <div id="profile-widget">
+        <div class="profile-btn" id="top-profile-btn" onclick="Navigation.navigateTo('profile.html')">
+            <div class="avatar-mini" id="widget-avatar">👤</div>
+            <span id="widget-name">Игрок</span>
+        </div>
+        <div class="msg-btn" onclick="Navigation.navigateTo('message.html')">
+            <span style="font-size:16px;">✉</span>
+            <div class="msg-badge" id="msg-badge" style="display:none;">0</div>
+        </div>
+    </div>
+
+    <div class="page active">
+        <div class="window" style="max-width:640px;">
+            <button class="back-btn" onclick="goBackToLeague()">←</button>
+            <div id="match-detail-content"></div>
+        </div>
+    </div>
+
+    <div id="public-profile-modal" class="custom-modal-overlay">
+        <div class="custom-modal" style="max-width:500px; text-align:left;">
+            <div id="public-profile-content" style="max-height:70vh; overflow-y:auto;"></div>
+            <button class="btn" style="background:#e2e8f0; width:100%; margin-top:15px;" onclick="Navigation.closeModal('public-profile-modal')">Закрыть</button>
+        </div>
+    </div>
+
+    <div id="modal-alert" class="custom-modal-overlay">
+        <div class="custom-modal">
+            <h3 id="alert-title">Внимание</h3>
+            <p id="alert-message"></p>
+            <button class="btn btn-primary" style="width:100%;" onclick="Navigation.closeModal('modal-alert')">ОК</button>
+        </div>
+    </div>
+
+    <script>
+        let currentMatchId = null;
+        let currentLeagueId = null;
+        let matchTacticsTab = '1t';
+
+        const realPlayerNames = ["Дастан", "Алихан", "Нурлан", "Ерлан", "Арман", "Максим", "Тимур", "Арсен", "Виктор", "Руслан"];
+
+        function getUrlParam(param) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(param);
+        }
+
+        function goBackToLeague() {
+            Navigation.goBack();
+        }
+
+        function initPage() {
+            const matchId = getUrlParam('id');
+            const leagueId = getUrlParam('league');
+
+            if (matchId) {
+                currentMatchId = parseInt(matchId);
+                currentLeagueId = leagueId ? parseInt(leagueId) : null;
+                matchTacticsTab = '1t';
+                renderMatchDetail();
+            } else {
+                document.getElementById('match-detail-content').innerHTML = 
+                    '<p style="text-align:center; padding:40px; color:var(--text-light);">Матч не найден. Укажите ID матча в URL.</p>';
+            }
+        }
+
+        function findMatchById(id) {
+            const allMatches = [];
+            Object.values(window.AppData.testMatches).forEach(arr => {
+                if (Array.isArray(arr)) {
+                    arr.forEach(m => allMatches.push(m));
+                }
+            });
+            return allMatches.find(x => x.id === id);
+        }
+
+        function getEmailByPlayerName(name) {
+            if (!name) return null;
+            const found = Object.keys(window.AppData.usersDatabase).find(e => 
+                window.AppData.usersDatabase[e].profile.name === name
+            );
+            return found || null;
+        }
+
+        function fillPlayersWithRealNames(existingPlayers, count) {
+            const result = [];
+            
+            for (let i = 0; i < count; i++) {
+                if (existingPlayers[i]) {
+                    result.push(existingPlayers[i]);
+                } else {
+                    for (let j = 0; j < realPlayerNames.length; j++) {
+                        const name = realPlayerNames[j];
+                        if (!result.includes(name) && !existingPlayers.slice(i + 1).includes(name)) {
+                            result.push(name);
+                            break;
+                        }
+                    }
+                    if (result.length <= i) {
+                        result.push(realPlayerNames[i % realPlayerNames.length]);
+                    }
+                }
+            }
+            
+            return result;
+        }
+
+        function renderMatchDetail() {
+            const m = findMatchById(currentMatchId);
+
+            if (!m) {
+                document.getElementById('match-detail-content').innerHTML = 
+                    '<p style="text-align:center; padding:40px; color:var(--text-light);">Матч не найден.</p>';
+                return;
+            }
+
+            const container = document.getElementById('match-detail-content');
+            if (!container) return;
+
+            const homeColor = m.home.color || '#3b82f6';
+            const awayColor = m.away.color || '#ef4444';
+
+            const homeLogo = m.home.logo || 'https://via.placeholder.com/40/ffffff/000000?text=' + m.home.name.charAt(0);
+            const awayLogo = m.away.logo || 'https://via.placeholder.com/40/ffffff/000000?text=' + m.away.name.charAt(0);
+
+            let html = '';
+
+            html += `
+                <div class="match-detail-header-slot">
+                    <div class="match-side left" style="background: linear-gradient(135deg, ${homeColor}, ${Navigation.adjustColor(homeColor, -30)});">
+                        <img src="${homeLogo}" alt="" onerror="this.style.display='none'">
+                        <span class="club-name">${m.home.name}</span>
+                    </div>
+                    <span class="match-score-left">${m.played ? m.home.goals : '0'}</span>
+                    <div class="match-center"><div class="match-divider-line"></div></div>
+                    <span class="match-score-right">${m.played ? m.away.goals : '0'}</span>
+                    <div class="match-side right" style="background: linear-gradient(135deg, ${awayColor}, ${Navigation.adjustColor(awayColor, -30)});">
+                        <img src="${awayLogo}" alt="" onerror="this.style.display='none'">
+                        <span class="club-name">${m.away.name}</span>
+                    </div>
+                </div>
+            `;
+
+            html += '<div style="padding:0 4px;">';
+
+            html += `
+                <div style="text-align:center; margin-bottom:16px; color:var(--text-light); font-size:14px;">
+                    📅 ${m.date} • 🕐 ${m.time}
+                    ${m.played ? ' • <span style="color:var(--success);font-weight:700;">Завершён</span>' : ' • <span style="color:var(--primary);font-weight:700;">Предстоит</span>'}
+                </div>
+            `;
+
+            html += '<div class="match-goals-section"><h4 style="margin-bottom:12px; color:var(--primary); text-align:center;">⏱ Хронология</h4>';
+            
+            if (m.played && m.events && m.events.length > 0) {
+                html += '<div class="goals-columns">';
+
+                html += `<div class="goals-col"><h5 style="color:${homeColor};">${m.home.name}</h5>`;
+                const homeEvents = m.events.filter(e => e.side === 'home');
+                if (homeEvents.length === 0) {
+                    html += '<p style="color:var(--text-light);font-size:12px;text-align:center;">Без событий</p>';
+                } else {
+                    homeEvents.forEach(e => {
+                        if (e.action === 'goal') {
+                            html += `<div class="goal-row">
+                                <span class="goal-player" onclick="event.stopPropagation(); goToPlayerProfile('${e.player}')" style="cursor:pointer; text-decoration:underline;">${e.player}</span>
+                                <span class="goal-detail">⚽ Гол</span>
+                                <span class="goal-half">${e.half}</span>
+                            </div>`;
+                        } else if (e.action === 'assist') {
+                            html += `<div class="goal-row">
+                                <span class="goal-player" onclick="event.stopPropagation(); goToPlayerProfile('${e.player}')" style="cursor:pointer; text-decoration:underline;">${e.player}</span>
+                                <span class="goal-detail">🎯 Ассист</span>
+                                <span class="goal-half">${e.half}</span>
+                            </div>`;
+                        } else if (e.action === 'sub') {
+                            html += `<div class="goal-row">
+                                <span class="goal-player">
+                                    <span onclick="event.stopPropagation(); goToPlayerProfile('${e.player}')" style="cursor:pointer; text-decoration:underline;">${e.player}</span> ↔ 
+                                    <span onclick="event.stopPropagation(); goToPlayerProfile('${e.playerOut || ''}')" style="cursor:pointer; text-decoration:underline;">${e.playerOut || '?'}</span>
+                                </span>
+                                <span class="goal-detail">🔄 Замена</span>
+                                <span class="goal-half">${e.time || e.half}</span>
+                            </div>`;
+                        }
+                    });
+                }
+                html += '</div>';
+
+                html += `<div class="goals-col"><h5 style="color:${awayColor};">${m.away.name}</h5>`;
+                const awayEvents = m.events.filter(e => e.side === 'away');
+                if (awayEvents.length === 0) {
+                    html += '<p style="color:var(--text-light);font-size:12px;text-align:center;">Без событий</p>';
+                } else {
+                    awayEvents.forEach(e => {
+                        if (e.action === 'goal') {
+                            html += `<div class="goal-row">
+                                <span class="goal-player" onclick="event.stopPropagation(); goToPlayerProfile('${e.player}')" style="cursor:pointer; text-decoration:underline;">${e.player}</span>
+                                <span class="goal-detail">⚽ Гол</span>
+                                <span class="goal-half">${e.half}</span>
+                            </div>`;
+                        } else if (e.action === 'assist') {
+                            html += `<div class="goal-row">
+                                <span class="goal-player" onclick="event.stopPropagation(); goToPlayerProfile('${e.player}')" style="cursor:pointer; text-decoration:underline;">${e.player}</span>
+                                <span class="goal-detail">🎯 Ассист</span>
+                                <span class="goal-half">${e.half}</span>
+                            </div>`;
+                        } else if (e.action === 'sub') {
+                            html += `<div class="goal-row">
+                                <span class="goal-player">
+                                    <span onclick="event.stopPropagation(); goToPlayerProfile('${e.player}')" style="cursor:pointer; text-decoration:underline;">${e.player}</span> ↔ 
+                                    <span onclick="event.stopPropagation(); goToPlayerProfile('${e.playerOut || ''}')" style="cursor:pointer; text-decoration:underline;">${e.playerOut || '?'}</span>
+                                </span>
+                                <span class="goal-detail">🔄 Замена</span>
+                                <span class="goal-half">${e.time || e.half}</span>
+                            </div>`;
+                        }
+                    });
+                }
+                html += '</div>';
+
+                html += '</div>';
+            } else if (m.played) {
+                html += '<p style="text-align:center; color:var(--text-light);">Нет данных о событиях.</p>';
+            } else {
+                html += '<p style="text-align:center; color:var(--text-light);">Матч ещё не сыгран.</p>';
+            }
+            html += '</div>';
+
+            html += '<div class="info-box"><h4>💬 Комментарий</h4>';
+            ['home', 'away'].forEach(side => {
+                const info = m.info ? m.info[side] : null;
+                const sideColor = m[side].color || '#3b82f6';
+                if (info) {
+                    html += `<div class="comment-block" style="background: linear-gradient(135deg, ${sideColor}, ${Navigation.adjustColor(sideColor, -40)});">
+                        <div class="comment-avatar">${m[side].name.charAt(0)}</div>
+                        <div style="flex:1;">
+                            <span style="font-size:11px; opacity:0.8;">${info.author} (${m[side].name})</span>
+                            <p class="comment-text" style="font-size:16px; font-weight:700; margin-top:6px;">${info.text}</p>
+                        </div>
+                    </div>`;
+                } else {
+                    html += `<div class="comment-block" style="background: linear-gradient(135deg, ${sideColor}, ${Navigation.adjustColor(sideColor, -40)});">
+                        <div class="comment-avatar">${m[side].name.charAt(0)}</div>
+                        <div style="flex:1;">
+                            <span style="font-size:11px; opacity:0.8;">${m[side].name}</span>
+                            <p class="comment-text" style="font-size:16px; font-weight:700; margin-top:6px;">Нет комментариев</p>
+                        </div>
+                    </div>`;
+                }
+            });
+            html += '</div>';
+
+            html += '<div class="info-box"><h4>🎬 Record</h4>';
+            if (!m.records || m.records.length === 0) {
+                html += '<p style="color:var(--text-light);">Записей нет</p>';
+            } else {
+                html += '<div class="record-slider">';
+                m.records.forEach((r, i) => {
+                    html += `<div class="record-item" style="cursor:pointer;" onclick="alert('Запись ${i+1}')">${r}</div>`;
+                });
+                html += '</div>';
+            }
+            html += '</div>';
+
+            html += '<div class="info-box"><h4>📊 Состав</h4>';
+            html += `<div class="tactics-tabs">
+                <button class="tactics-tab ${matchTacticsTab === '1t' ? 'active' : ''}" onclick="matchTacticsTab='1t'; renderMatchDetail();">1Т</button>
+                <button class="tactics-tab ${matchTacticsTab === '2t' ? 'active' : ''}" onclick="matchTacticsTab='2t'; renderMatchDetail();">2Т</button>
+            </div>`;
+            html += '<div style="display:flex; gap:12px; flex-wrap:wrap;">';
+            html += buildFormationField(m, 'home', matchTacticsTab, homeColor);
+            html += buildFormationField(m, 'away', matchTacticsTab, awayColor);
+            html += '</div></div>';
+
+            html += '</div>';
+
+            container.innerHTML = html;
+        }
+
+        function buildFormationField(m, side, half, color) {
+            const rawPlayers = (m.lineups && m.lineups[half] && m.lineups[half][side]) ? m.lineups[half][side] : [];
+            const players = fillPlayersWithRealNames(rawPlayers, 4);
+            const clubColor = color || m[side].color || '#3b82f6';
+
+            let html = `<div style="flex:1; min-width:160px;">
+                <div style="text-align:center;font-weight:700;font-size:14px;margin-bottom:6px;color:${clubColor};">${m[side].name}</div>
+                <div class="formation-field" style="position:relative; height:320px;">
+            `;
+
+            html += `
+                <div class="player-position" style="top:15%; left:28%;" onclick="goToPlayerProfile('${players[0]}')">
+                    <div class="player-circle" style="background:${clubColor};">1</div>
+                    <div class="player-name-tag">${players[0]}</div>
+                </div>
+                <div class="player-position" style="top:15%; left:72%;" onclick="goToPlayerProfile('${players[1]}')">
+                    <div class="player-circle" style="background:${clubColor};">2</div>
+                    <div class="player-name-tag">${players[1]}</div>
+                </div>
+            `;
+
+            html += `
+                <div class="player-position" style="top:48%; left:50%;" onclick="goToPlayerProfile('${players[2]}')">
+                    <div class="player-circle" style="background:${clubColor};">3</div>
+                    <div class="player-name-tag">${players[2]}</div>
+                </div>
+            `;
+
+            html += `
+                <div class="player-position" style="top:82%; left:50%;" onclick="goToPlayerProfile('${players[3]}')">
+                    <div class="player-circle" style="background:${clubColor};">4</div>
+                    <div class="player-name-tag">${players[3]}</div>
+                </div>
+            `;
+
+            html += '</div></div>';
+            return html;
+        }
+
+        function goToPlayerProfile(playerName) {
+            if (!playerName || playerName === '?' || playerName === '???') return;
+            
+            const email = getEmailByPlayerName(playerName);
+            if (email) {
+                window.location.href = `profile.html?email=${encodeURIComponent(email)}`;
+            } else {
+                Navigation.showAlert("Игрок не найден", `Профиль игрока "${playerName}" не существует в базе данных.`);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            Navigation.init();
+            initPage();
+        });
+    </script>
+</body>
+</html>

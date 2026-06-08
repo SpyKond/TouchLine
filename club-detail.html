@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Football Stats - Профиль клуба</title>
+    <link rel="stylesheet" href="design.css">
+    <script src="data.js"></script>
+    <script src="navigation.js"></script>
+</head>
+<body>
+    <div id="profile-widget">
+        <div class="profile-btn" id="top-profile-btn" onclick="Navigation.navigateTo('profile.html')">
+            <div class="avatar-mini" id="widget-avatar">👤</div>
+            <span id="widget-name">Игрок</span>
+        </div>
+        <div class="msg-btn" onclick="Navigation.navigateTo('message.html')">
+            <span style="font-size:16px;">✉</span>
+            <div class="msg-badge" id="msg-badge" style="display:none;">0</div>
+        </div>
+    </div>
+
+    <div class="page active">
+        <div class="window" style="max-width:600px;">
+            <button class="back-btn" onclick="goBack()">←</button>
+            <div id="club-profile-content"></div>
+        </div>
+    </div>
+
+    <div id="club-applications-modal" class="custom-modal-overlay">
+        <div class="custom-modal" style="max-width:500px; text-align:left;">
+            <h3 style="text-align:center;">Заявки в клуб</h3>
+            <div class="search-bar">
+                <input type="text" id="app-search-input" placeholder="Поиск заявки..." oninput="renderApplicationsList()">
+            </div>
+            <div id="applications-list" style="max-height:250px; overflow-y:auto;"></div>
+            <div style="margin-top:12px; display:flex; align-items:center; justify-content:space-between;">
+                <label>
+                    <input type="checkbox" id="ref-block-toggle" onchange="toggleReferralBlock()"> Закрыть рефералы
+                </label>
+                <button class="btn btn-danger" style="padding:8px 16px; font-size:13px;" onclick="rejectAllApplications()">Отклонить все</button>
+            </div>
+            <button class="btn" style="background:#e2e8f0; width:100%; margin-top:12px;" onclick="Navigation.closeModal('club-applications-modal')">Закрыть</button>
+        </div>
+    </div>
+
+    <div id="public-profile-modal" class="custom-modal-overlay">
+        <div class="custom-modal" style="max-width:500px; text-align:left;">
+            <div id="public-profile-content" style="max-height:70vh; overflow-y:auto;"></div>
+            <button class="btn" style="background:#e2e8f0; width:100%; margin-top:15px;" onclick="Navigation.closeModal('public-profile-modal')">Закрыть</button>
+        </div>
+    </div>
+
+    <div id="modal-alert" class="custom-modal-overlay">
+        <div class="custom-modal">
+            <h3 id="alert-title">Внимание</h3>
+            <p id="alert-message"></p>
+            <button class="btn btn-primary" style="width:100%;" onclick="Navigation.closeModal('modal-alert')">ОК</button>
+        </div>
+    </div>
+
+    <script>
+        let viewingClubId = null;
+        let currentAppClubId = null;
+
+        function getUrlParam(param) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(param);
+        }
+
+        function goBack() {
+            Navigation.goBack();
+        }
+
+        function initPage() {
+            const clubId = getUrlParam('id');
+            const clubName = getUrlParam('name');
+
+            if (clubId) {
+                viewingClubId = parseInt(clubId);
+                renderClubProfileView();
+            } else if (clubName) {
+                const club = window.AppData.globalClubs.find(c => c.name === clubName);
+                if (club) {
+                    viewingClubId = club.id;
+                    renderClubProfileView();
+                } else {
+                    // Если клуб не найден в глобальных, ищем в таблице лиг
+                    const standingClub = window.AppData.testStandings.find(s => s.name === clubName);
+                    if (standingClub) {
+                        renderStandingClubProfile(standingClub);
+                    } else {
+                        document.getElementById('club-profile-content').innerHTML = '<p style="text-align:center; padding:40px;">Клуб не найден.</p>';
+                    }
+                }
+            } else {
+                document.getElementById('club-profile-content').innerHTML = '<p style="text-align:center; padding:40px;">Укажите ID или название клуба в URL.</p>';
+            }
+        }
+
+        function renderStandingClubProfile(standingClub) {
+            let html = `
+                <div style="text-align:center; margin-bottom:16px;">
+                    <img src="${standingClub.logo || 'https://via.placeholder.com/80/3b82f6/ffffff?text='+standingClub.name.charAt(0)}" style="width:60px;height:60px;object-fit:contain;border-radius:12px;">
+                    <h2>${standingClub.name}</h2>
+                </div>
+                <div style="display:flex; justify-content:space-around; text-align:center; background:#f8fafc; padding:16px; border-radius:12px; margin-bottom:16px;">
+                    <div><strong style="font-size:22px;">${standingClub.gp}</strong><br>Игр</div>
+                    <div><strong style="font-size:22px; color:var(--success);">${standingClub.w}</strong><br>Побед</div>
+                    <div><strong style="font-size:22px;">${standingClub.d}</strong><br>Ничьих</div>
+                    <div><strong style="font-size:22px; color:var(--danger);">${standingClub.l}</strong><br>Поражений</div>
+                    <div><strong style="font-size:22px; color:var(--primary);">${standingClub.pts}</strong><br>Очков</div>
+                </div>
+                <div style="display:flex; justify-content:space-around; text-align:center; background:#f8fafc; padding:16px; border-radius:12px; margin-bottom:16px;">
+                    <div><strong style="font-size:22px;">${standingClub.gf}</strong><br>Забито</div>
+                    <div><strong style="font-size:22px;">${standingClub.ga}</strong><br>Пропущено</div>
+                </div>
+                <p style="text-align:center; color:var(--text-light);">Этот клуб участвует в лиге. Для просмотра состава перейдите на страницу лиги.</p>
+            `;
+            document.getElementById('club-profile-content').innerHTML = html;
+        }
+
+        function renderClubProfileView() {
+            const club = window.AppData.globalClubs.find(c => c.id === viewingClubId);
+            if (!club) {
+                document.getElementById('club-profile-content').innerHTML = '<p style="text-align:center; padding:40px;">Клуб не найден.</p>';
+                return;
+            }
+
+            const isAdmin = window.AppData.isClubAdmin(club, window.AppData.activeUserEmail);
+            const isMember = club.members.some(m => m.email === window.AppData.activeUserEmail);
+
+            let html = `
+                <div style="text-align:center;">
+                    <img src="${club.logo || 'https://via.placeholder.com/80/3b82f6/ffffff?text='+club.name.charAt(0)}" style="width:80px;height:80px;object-fit:contain;border-radius:16px;background:#f1f5f9;">
+                    <h2>${club.name}</h2>
+                    <p>Игроки: ${club.members.length}/${club.maxPlayers}</p>
+                </div>
+                <div style="display:flex;justify-content:center;gap:20px;text-align:center;background:#f8fafc;padding:20px;border-radius:12px;margin-bottom:16px;">
+                    <div style="flex:1;">
+                        <strong style="font-size:26px;">${club.stats.games||0}</strong>
+                        <br><span style="color:var(--text-light);font-size:13px;">Игр</span>
+                    </div>
+                    <div style="flex:1;">
+                        <strong style="font-size:26px;color:var(--success);">${club.stats.wins||0}</strong>
+                        <br><span style="color:var(--text-light);font-size:13px;">Побед</span>
+                    </div>
+                    <div style="flex:1;">
+                        <strong style="font-size:26px;color:var(--danger);">${club.stats.losses||0}</strong>
+                        <br><span style="color:var(--text-light);font-size:13px;">Поражений</span>
+                    </div>
+                </div>
+                <button class="btn" style="width:100%;margin-bottom:8px;background:#f1f5f9;" onclick="showGlobalClubHall(${club.id})">Зал славы</button>
+            `;
+
+            if (isAdmin) {
+                html += `<button class="btn btn-primary" style="width:100%;margin-bottom:8px;" onclick="openClubApplications(${club.id})">Заявки (${club.applications?club.applications.length:0})</button>`;
+            }
+
+            if (!isMember && club.members.length < club.maxPlayers) {
+                if (club.refBlocked) {
+                    html += '<p style="color:var(--danger);text-align:center;">Владелец заблокировал приём заявок.</p>';
+                } else {
+                    html += `<button class="btn btn-success" style="width:100%;margin-bottom:8px;" onclick="sendJoinRequest(${club.id})">Отправить заявку</button>`;
+                }
+            }
+
+            // Участники
+            html += '<h3>Состав</h3>';
+            html += '<div style="display:flex;gap:4px;margin-bottom:4px;font-size:10px;font-weight:700;color:var(--text-light);padding-left:56px;">';
+            html += '<span style="flex:1;"></span>';
+            html += '<span style="width:40px;text-align:center;">G</span>';
+            html += '<span style="width:40px;text-align:center;">A</span>';
+            html += '<span style="width:40px;text-align:center;">GP</span>';
+            html += '</div>';
+
+            if (club.members.length === 0) {
+                html += '<p style="color:var(--text-light);">Нет игроков.</p>';
+            } else {
+                club.members.forEach(m => {
+                    const user = window.AppData.usersDatabase[m.email];
+                    if (!user) return;
+
+                    const p = user.profile;
+                    const roleText = m.role === 'owner' ? 'Owner' : m.role === 'captain' ? 'Captain' : 'Участник';
+                    const roleClass = m.role === 'owner' ? 'owner' : m.role === 'captain' ? 'captain' : '';
+                    const g = m.stats?.goals || Math.floor(Math.random()*15);
+                    const a = m.stats?.assists || Math.floor(Math.random()*10);
+                    const gp = m.stats?.games || Math.floor(Math.random()*20);
+
+                    html += `
+                        <div class="member-slot" onclick="viewPublicProfile('${m.email}')">
+                            <div class="avatar-mini">
+                                ${p.photo ? `<img src="${p.photo}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : '👤'}
+                            </div>
+                            <div style="flex:1;">
+                                <strong>${p.name}</strong> ${p.nationality}
+                                <br><small>${p.hashtag}</small>
+                            </div>
+                            <span class="role-badge ${roleClass}">${roleText}</span>
+                            <div style="display:flex;gap:4px;font-weight:700;font-size:14px;margin-left:8px;">
+                                <span style="width:40px;text-align:center;color:var(--success);">${g}</span>
+                                <span style="width:40px;text-align:center;color:#8b5cf6;">${a}</span>
+                                <span style="width:40px;text-align:center;color:var(--text-light);">${gp}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+
+            document.getElementById('club-profile-content').innerHTML = html;
+        }
+
+        function showGlobalClubHall(clubId) {
+            const club = window.AppData.globalClubs.find(c => c.id === clubId) || { hallOfFame: [] };
+            let html = '<h3>Зал славы</h3>';
+            if (!club.hallOfFame || club.hallOfFame.length === 0) {
+                html += '<p>Наград пока нет.</p>';
+            } else {
+                club.hallOfFame.forEach(a => {
+                    html += `
+                        <div class="trophy-slot">
+                            <div class="trophy-icon">${a.icon}</div>
+                            <div class="trophy-info">
+                                <strong>${a.type}</strong>
+                                <small>${a.league} • Сезон ${a.season}</small>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+            document.getElementById('public-profile-content').innerHTML = html;
+            Navigation.openModal('public-profile-modal');
+        }
+
+        function sendJoinRequest(clubId) {
+            const club = window.AppData.globalClubs.find(c => c.id === clubId);
+            if (!club) return;
+
+            if (club.applications.some(a => a.email === window.AppData.activeUserEmail)) {
+                Navigation.showAlert("Внимание", "Вы уже отправили заявку.");
+                return;
+            }
+
+            if (club.members.some(m => m.email === window.AppData.activeUserEmail)) {
+                Navigation.showAlert("Внимание", "Вы уже состоите в клубе.");
+                return;
+            }
+
+            club.applications.push({ email: window.AppData.activeUserEmail, timestamp: Date.now() });
+            window.AppData.saveAll();
+            Navigation.showAlert("Успешно", "Заявка отправлена!");
+            renderClubProfileView();
+        }
+
+        function openClubApplications(clubId) {
+            currentAppClubId = clubId;
+            renderApplicationsList();
+            const club = window.AppData.globalClubs.find(c => c.id === clubId);
+            if (club) {
+                document.getElementById('ref-block-toggle').checked = club.refBlocked;
+            }
+            Navigation.openModal('club-applications-modal');
+        }
+
+        function renderApplicationsList() {
+            const club = window.AppData.globalClubs.find(c => c.id === currentAppClubId);
+            if (!club) return;
+
+            const search = document.getElementById('app-search-input')?.value.toLowerCase() || '';
+            const container = document.getElementById('applications-list');
+            container.innerHTML = '';
+
+            const filtered = club.applications.filter(a => {
+                const user = window.AppData.usersDatabase[a.email];
+                return user && user.profile.name.toLowerCase().includes(search);
+            });
+
+            if (filtered.length === 0) {
+                container.innerHTML = '<p style="color:var(--text-light);text-align:center;">Заявок нет.</p>';
+            } else {
+                filtered.forEach(a => {
+                    const user = window.AppData.usersDatabase[a.email];
+                    container.innerHTML += `
+                        <div class="member-slot" style="justify-content:space-between;">
+                            <div style="display:flex;align-items:center;gap:10px;">
+                                <div class="avatar-mini">${user.profile.photo ? `<img src="${user.profile.photo}">` : '👤'}</div>
+                                <div>
+                                    <strong>${user.profile.name}</strong>
+                                    <br><small>${user.profile.hashtag}</small>
+                                </div>
+                            </div>
+                            <div style="display:flex;gap:6px;">
+                                <button class="btn btn-success" style="padding:6px 12px;font-size:12px;" onclick="handleApplication('${a.email}',true)">Принять</button>
+                                <button class="btn btn-danger" style="padding:6px 12px;font-size:12px;" onclick="handleApplication('${a.email}',false)">Отклонить</button>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+        }
+
+        function handleApplication(email, accept) {
+            const club = window.AppData.globalClubs.find(c => c.id === currentAppClubId);
+            if (!club) return;
+
+            club.applications = club.applications.filter(a => a.email !== email);
+            if (accept && club.members.length < club.maxPlayers) {
+                club.members.push({ email, role: 'member', stats: { goals: 0, assists: 0, games: 0, mvp: 0 } });
+                sendSystemMessage(email, `Заявка в клуб "${club.name}" одобрена!`);
+            }
+            window.AppData.saveAll();
+            renderApplicationsList();
+            renderClubProfileView();
+        }
+
+        function rejectAllApplications() {
+            const club = window.AppData.globalClubs.find(c => c.id === currentAppClubId);
+            if (!club) return;
+            club.applications = [];
+            window.AppData.saveAll();
+            renderApplicationsList();
+            renderClubProfileView();
+        }
+
+        function toggleReferralBlock() {
+            const club = window.AppData.globalClubs.find(c => c.id === currentAppClubId);
+            if (!club) return;
+            club.refBlocked = document.getElementById('ref-block-toggle').checked;
+            window.AppData.saveAll();
+        }
+
+        function sendSystemMessage(to, text) {
+            const key = window.AppData.getChatKey('system', to);
+            if (!window.AppData.messages[key]) window.AppData.messages[key] = [];
+            window.AppData.messages[key].push({ from: 'system', text, timestamp: Date.now(), type: 'text' });
+            window.AppData.saveMessages();
+        }
+
+        function viewPublicProfile(email) {
+            if (!email) return;
+            window.location.href = `profile.html?email=${encodeURIComponent(email)}`;
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            Navigation.init();
+            initPage();
+        });
+    </script>
+</body>
+</html>

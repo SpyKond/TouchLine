@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Football Stats - Обсуждение</title>
+    <link rel="stylesheet" href="design.css">
+    <script src="data.js"></script>
+    <script src="navigation.js"></script>
+</head>
+<body>
+    <div id="profile-widget">
+        <div class="profile-btn" id="top-profile-btn" onclick="Navigation.navigateTo('profile.html')">
+            <div class="avatar-mini" id="widget-avatar">👤</div>
+            <span id="widget-name">Игрок</span>
+        </div>
+        <div class="msg-btn" onclick="Navigation.navigateTo('message.html')">
+            <span style="font-size:16px;">✉</span>
+            <div class="msg-badge" id="msg-badge" style="display:none;">0</div>
+        </div>
+    </div>
+
+    <div class="page active">
+        <div class="window" style="max-width:640px; padding:16px;">
+            <button class="back-btn" onclick="Navigation.goBack()">←</button>
+            <div id="post-header"></div>
+            <div class="chat-container" style="height:60vh;">
+                <div class="chat-messages" id="post-chat-messages"></div>
+                <div class="chat-input-area">
+                    <input type="text" id="post-chat-input" placeholder="Сообщение..." onkeydown="if(event.key==='Enter')sendPostMessage()">
+                    <button class="btn btn-primary" style="padding:8px 16px;" onclick="sendPostMessage()">➤</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentLeagueId = null;
+        let currentNewsIndex = null;
+
+        const POST_CHAT_KEY = 'football_tracker_pro_v4_post_chat';
+
+        function getUrlParam(param) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(param);
+        }
+
+        function getPostChatMessages(leagueId, newsIndex) {
+            const saved = localStorage.getItem(POST_CHAT_KEY);
+            const all = saved ? JSON.parse(saved) : {};
+            const key = `${leagueId}_${newsIndex}`;
+            return all[key] || [];
+        }
+
+        function savePostChatMessage(leagueId, newsIndex, msg) {
+            const saved = localStorage.getItem(POST_CHAT_KEY);
+            const all = saved ? JSON.parse(saved) : {};
+            const key = `${leagueId}_${newsIndex}`;
+            if (!all[key]) all[key] = [];
+            all[key].push(msg);
+            localStorage.setItem(POST_CHAT_KEY, JSON.stringify(all));
+        }
+
+        function getLastChatters(leagueId, newsIndex) {
+            const msgs = getPostChatMessages(leagueId, newsIndex);
+            const emails = new Set();
+            const result = [];
+            for (let i = msgs.length - 1; i >= 0; i--) {
+                if (!emails.has(msgs[i].email) && msgs[i].email !== 'system') {
+                    emails.add(msgs[i].email);
+                    result.push(msgs[i].email);
+                }
+                if (result.length >= 3) break;
+            }
+            return result;
+        }
+
+        function initPage() {
+            const leagueId = getUrlParam('league');
+            const newsIndex = getUrlParam('news');
+
+            if (leagueId && newsIndex !== null) {
+                currentLeagueId = parseInt(leagueId);
+                currentNewsIndex = parseInt(newsIndex);
+                renderPostHeader();
+                renderPostChat();
+                scrollToBottom();
+            } else {
+                document.getElementById('post-chat-messages').innerHTML = '<p style="text-align:center; padding:40px;">Пост не найден.</p>';
+            }
+        }
+
+        function renderPostHeader() {
+            const news = window.AppData.testNews[currentLeagueId]?.[currentNewsIndex];
+            if (!news) return;
+
+            const container = document.getElementById('post-header');
+            container.innerHTML = `
+                <div style="margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid var(--border-color);">
+                    <div class="news-time-row"><div class="line"></div><span class="time">${news.time}</span></div>
+                    <div class="news-title" style="text-align:left;">${news.title}</div>
+                    <div style="font-size:13px; color:var(--text-dark); margin-top:4px;">${news.preview}</div>
+                </div>
+            `;
+        }
+
+        function renderPostChat() {
+            const msgs = getPostChatMessages(currentLeagueId, currentNewsIndex);
+            const container = document.getElementById('post-chat-messages');
+            container.innerHTML = '';
+
+            if (msgs.length === 0) {
+                container.innerHTML = '<p style="text-align:center; color:var(--text-light); padding:20px;">Нет сообщений. Будьте первым!</p>';
+                return;
+            }
+
+            msgs.forEach(m => {
+                const user = window.AppData.usersDatabase[m.email];
+                const senderName = user ? user.profile.name : 'Неизвестный';
+                const senderPhoto = user?.profile?.photo || '';
+                const time = new Date(m.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                const isMe = m.email === window.AppData.activeUserEmail;
+
+                container.innerHTML += `
+                    <div class="chat-msg-bubble" style="text-align:${isMe?'right':'left'};margin:8px;">
+                        ${!isMe ? `
+                            <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;cursor:pointer;" onclick="window.location.href='profile.html?email=${encodeURIComponent(m.email)}'">
+                                <div class="avatar-mini" style="width:24px;height:24px;">
+                                    ${senderPhoto ? `<img src="${senderPhoto}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : '👤'}
+                                </div>
+                                <span class="chat-msg-sender">${senderName}</span>
+                            </div>
+                        ` : ''}
+                        <div style="display:inline-block;background:${isMe?'#3b82f6':'#f1f5f9'};color:${isMe?'white':'#0f172a'};padding:8px 14px;border-radius:12px;max-width:70%;font-size:14px;">
+                            ${m.text}
+                            <div style="font-size:10px;margin-top:4px;opacity:0.7;">${time}</div>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function sendPostMessage() {
+            const input = document.getElementById('post-chat-input');
+            const text = input.value.trim();
+            if (!text) return;
+
+            savePostChatMessage(currentLeagueId, currentNewsIndex, {
+                email: window.AppData.activeUserEmail,
+                text: text,
+                timestamp: Date.now()
+            });
+
+            input.value = '';
+            renderPostChat();
+            scrollToBottom();
+        }
+
+        function scrollToBottom() {
+            const container = document.getElementById('post-chat-messages');
+            if (container) {
+                setTimeout(() => {
+                    container.scrollTop = container.scrollHeight;
+                }, 100);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            Navigation.init();
+            initPage();
+        });
+    </script>
+</body>
+</html>
